@@ -40,6 +40,11 @@ const userSchema = new mongoose.Schema(
     failedConfirmAttempts: { type: Number, default: 0, select: false },
     lockUntil: { type: Date, default: null, select: false },
     lastLoginAt: { type: Date, default: null },
+    // Staff invites: the emailed activation link carries a random token; only
+    // its hash is stored, it expires, and it works exactly once.
+    inviteTokenHash: { type: String, default: null, select: false },
+    inviteExpiresAt: { type: Date, default: null, select: false },
+    inviteSentAt: { type: Date, default: null, select: false },
   },
   { timestamps: true }
 );
@@ -73,6 +78,9 @@ userSchema.set('toJSON', {
     delete ret.failedLoginAttempts;
     delete ret.failedConfirmAttempts;
     delete ret.lockUntil;
+    delete ret.inviteTokenHash;
+    delete ret.inviteExpiresAt;
+    delete ret.inviteSentAt;
     delete ret.__v;
     return ret;
   },

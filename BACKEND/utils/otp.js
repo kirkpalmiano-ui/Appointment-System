@@ -13,8 +13,8 @@ export const OTP_RULES = {
   resetTokenMinutes: 10,
 };
 
-// Staff invites can't be expected to be opened within 10 minutes.
-const EXPIRY_MINUTES = { 'staff-invite': 24 * 60 };
+// Per-purpose overrides of the default code lifetime (none at the moment).
+const EXPIRY_MINUTES = {};
 const expiryMinutes = (purpose) => EXPIRY_MINUTES[purpose] ?? OTP_RULES.expiresInMinutes;
 
 const HOUR = 60 * 60 * 1000;

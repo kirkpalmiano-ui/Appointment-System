@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
-export const OTP_PURPOSES = ['verify-email', 'reset-password', 'change-email', 'admin-login', 'staff-invite'];
+// (Staff invites use a one-click email link instead; see the User invite fields.)
+export const OTP_PURPOSES = ['verify-email', 'reset-password', 'change-email', 'admin-login'];
 // Purposes a logged-out user may request via /auth/resend-otp.
 export const PUBLIC_OTP_PURPOSES = ['verify-email', 'reset-password'];
 

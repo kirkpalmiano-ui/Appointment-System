@@ -29,6 +29,11 @@ export function signToken(user, scope = SCOPES.USER) {
   });
 }
 
+// One-time link tokens (staff invites): a random secret for the email link,
+// and the hash that is stored, so a database leak can't be used to activate accounts.
+export const newLinkToken = () => crypto.randomBytes(32).toString('hex');
+export const hashLinkToken = (token) => crypto.createHmac('sha256', config.jwtSecret).update(String(token)).digest('hex');
+
 // Returns the payload, or null if the token is invalid/expired.
 export function verifyToken(token) {
   try {

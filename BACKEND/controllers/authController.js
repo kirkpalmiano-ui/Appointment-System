@@ -3,7 +3,7 @@ import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
 import { assertAdminPasswordStrength, assertNewPassword, recordLogin, verifyCredentials } from '../utils/credentials.js';
 import { clearOtp, findResetToken, issueOtp, issueResetToken, verifyOtp } from '../utils/otp.js';
-import { SCOPES, scopeForRole, signToken } from '../utils/tokens.js';
+import { SCOPES, hashLinkToken, scopeForRole, signToken } from '../utils/tokens.js';
 
 // POST /api/auth/register
 // Creates an unverified account and emails a verification code. No login
@@ -94,46 +94,49 @@ export async function login(req, res) {
 }
 
 // ---------- Staff account activation ----------
-// An admin's invite creates an inactive staff login and emails a code.
-// The staff member proves they own the inbox and chooses their password here.
+// An admin's invite creates an inactive staff login and emails a one-click
+// activation link. Opening it (proof they own the inbox) lets the staff member
+// choose their password. The link is single-use and expires after 24 hours.
 
 const invalidInvite = () =>
-  new ApiError(400, 'This code is invalid or has expired. Ask an administrator to send a new invite.', undefined, { code: 'INVITE_INVALID' });
+  new ApiError(400, 'This activation link is invalid or has expired. Ask an administrator to send a new invite.', undefined, {
+    code: 'INVITE_INVALID',
+  });
 
-async function pendingStaffUser(email) {
-  const user = await User.findOne({ email, role: 'staff' }).select('+tokenVersion');
+// The pending staff login behind an activation link, or null.
+async function staffUserFromInvite(token) {
+  const user = await User.findOne({
+    inviteTokenHash: hashLinkToken(token),
+    inviteExpiresAt: { $gt: new Date() },
+    role: 'staff',
+    isVerified: false,
+  }).select('+tokenVersion +password');
   if (!user) return null;
   // The login must still be linked to a staff record (the admin may have revoked it).
   return (await Staff.exists({ user: user._id })) ? user : null;
 }
 
-// POST /api/auth/staff/activate   { email, otp, password }
-export async function activateStaff(req, res) {
-  const { email, otp, password } = req.body;
-  const user = await pendingStaffUser(email);
+// POST /api/auth/staff/invite   { token }  - who is this link for? (shown on the page)
+export async function checkStaffInvite(req, res) {
+  const user = await staffUserFromInvite(req.body.token);
   if (!user) throw invalidInvite();
-  if (user.isVerified) {
-    throw new ApiError(400, 'This account is already set up. Please log in.', undefined, { code: 'ALREADY_ACTIVE' });
-  }
+  res.json({ name: user.name, email: user.email });
+}
 
-  await verifyOtp({ email, purpose: 'staff-invite', code: otp });
+// POST /api/auth/staff/activate   { token, password }
+export async function activateStaff(req, res) {
+  const { token, password } = req.body;
+  const user = await staffUserFromInvite(token);
+  if (!user) throw invalidInvite();
+
   user.password = password;
   user.isVerified = true;
+  // Single use: the link stops working the moment it is used.
+  user.set({ inviteTokenHash: null, inviteExpiresAt: null });
   await user.save();
-  await clearOtp(email, 'staff-invite');
   await recordLogin(user);
 
   res.json({ token: signToken(user, SCOPES.STAFF), user });
-}
-
-// POST /api/auth/staff/resend   { email }
-// Same response whether or not there is a pending invite for this email.
-export async function resendStaffInvite(req, res) {
-  const { email } = req.body;
-  const user = await pendingStaffUser(email);
-  const deliver = Boolean(user && !user.isVerified);
-  const otp = await issueOtp({ email, purpose: 'staff-invite', name: user?.name, deliver });
-  res.json({ message: `If there is a pending invite for ${email}, we sent a new code to it.`, ...otp });
 }
 
 // Shared by /forgot-password and /resend-otp (reset). The response is the same

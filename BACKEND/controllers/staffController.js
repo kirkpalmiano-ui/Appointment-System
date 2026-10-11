@@ -7,7 +7,8 @@ import Appointment, { ACTIVE_STATUSES } from '../models/Appointment.js';
 import { isAdminRequest } from '../middleware/auth.js';
 import ApiError from '../utils/ApiError.js';
 import { audit } from '../utils/audit.js';
-import { clearOtp, issueOtp } from '../utils/otp.js';
+import { sendStaffInviteEmail } from '../utils/email.js';
+import { hashLinkToken, newLinkToken } from '../utils/tokens.js';
 import { getPagination, paginated, searchRegex } from '../utils/query.js';
 import { addDays, dayOfWeek, nowInBusinessTz, toMinutes } from '../utils/time.js';
 
@@ -164,8 +165,8 @@ export async function updateStaff(req, res) {
 async function removePortalAccount(staff) {
   if (!staff.user) return;
   const userId = staff.user._id ?? staff.user;
+  // Deleting the login also kills any unused activation link (it lives on the user).
   await User.deleteOne({ _id: userId, role: 'staff' });
-  if (staff.email) await clearOtp(staff.email, 'staff-invite');
   staff.user = null;
 }
 
@@ -191,8 +192,11 @@ export async function deleteStaff(req, res) {
   res.json({ message: 'Staff member deleted.' });
 }
 
+export const INVITE = { expiresInHours: 24, resendCooldownSeconds: 60 };
+
 // POST /api/staff/:id/invite  (admin)
-// Creates (or re-sends) a staff-portal invite to the staff member's email.
+// Creates (or re-sends) a staff-portal invite: an email with a one-click
+// activation link. Each send replaces the previous link.
 export async function inviteStaff(req, res) {
   const staff = await Staff.findById(req.params.id).populate('user', 'isVerified');
   if (!staff) throw new ApiError(404, 'Staff member not found.');
@@ -204,7 +208,7 @@ export async function inviteStaff(req, res) {
       throw new ApiError(409, 'That email already belongs to another account. Use a different work email for this staff member.');
     }
     // The random password is never shown to anyone; the staff member sets
-    // their own when they activate the account with the emailed code.
+    // their own when they open the activation link.
     const user = await User.create({
       name: staff.name,
       firstName: staff.firstName,
@@ -218,9 +222,41 @@ export async function inviteStaff(req, res) {
     await staff.save();
   }
 
-  const otp = await issueOtp({ email: staff.email, purpose: 'staff-invite', name: staff.name });
+  const user = await User.findById(staff.user._id ?? staff.user).select('+inviteSentAt');
+  const sinceLast = user.inviteSentAt ? Date.now() - user.inviteSentAt.getTime() : Infinity;
+  if (sinceLast < INVITE.resendCooldownSeconds * 1000) {
+    const retryAfter = Math.ceil((INVITE.resendCooldownSeconds * 1000 - sinceLast) / 1000);
+    throw new ApiError(429, `An invite was just sent. Please wait ${retryAfter}s before sending another.`, undefined, {
+      code: 'INVITE_COOLDOWN',
+      retryAfter,
+    });
+  }
+
+  // A fresh link every time; any earlier link stops working.
+  const token = newLinkToken();
+  const previous = { inviteTokenHash: user.inviteTokenHash, inviteExpiresAt: user.inviteExpiresAt, inviteSentAt: user.inviteSentAt };
+  await User.updateOne(
+    { _id: user._id },
+    {
+      inviteTokenHash: hashLinkToken(token),
+      inviteExpiresAt: new Date(Date.now() + INVITE.expiresInHours * 3600 * 1000),
+      inviteSentAt: new Date(),
+    }
+  );
+  try {
+    await sendStaffInviteEmail({ to: staff.email, name: staff.name, token, expiresInHours: INVITE.expiresInHours });
+  } catch (err) {
+    // The email never went out: keep the previous link (if any) valid.
+    await User.updateOne({ _id: user._id }, previous);
+    throw err;
+  }
+
   await audit(req, 'staff.invite', { targetType: 'staff', targetId: staff._id, summary: `Sent staff-portal invite to ${staff.email}` });
-  res.json({ message: `Invite sent to ${staff.email}.`, ...otp });
+  res.json({
+    message: `Invite sent to ${staff.email}.`,
+    expiresInHours: INVITE.expiresInHours,
+    resendAvailableIn: INVITE.resendCooldownSeconds,
+  });
 }
 
 // DELETE /api/staff/:id/access  (admin)

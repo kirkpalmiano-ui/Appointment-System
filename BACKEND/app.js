@@ -29,6 +29,8 @@ app.use(
     origin(origin, callback) {
       // Allow non-browser tools (no Origin header) and the configured frontends.
       if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+      // Local development only: `flutter run -d chrome` picks a random localhost port.
+      if (config.nodeEnv === 'development' && /^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
       callback(new ApiError(403, `Origin ${origin} is not allowed by CORS.`));
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],

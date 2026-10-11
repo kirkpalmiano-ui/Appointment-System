@@ -129,12 +129,6 @@ export default function Login() {
           Sign up
         </Link>
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 1 }}>
-        Staff member with an invite code?{' '}
-        <Link component={RouterLink} to="/staff/activate">
-          Set up your account
-        </Link>
-      </Typography>
     </>
   );
 }

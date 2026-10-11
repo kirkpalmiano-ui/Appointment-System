@@ -61,14 +61,41 @@ const COPY = {
     heading: 'Admin sign-in',
     intro: 'Someone (hopefully you) entered your password on the admin panel. Use this code to finish signing in:',
   },
-  'staff-invite': {
-    subject: (app) => `You're invited to the ${app} staff portal`,
-    heading: 'Set up your staff account',
-    intro: 'You have been given access to the staff portal, where you can see your schedule and manage your time off. Use this code to set your password:',
-    // Where to enter the code (the first configured client-app URL).
-    link: () => `${config.clientUrls[0]}/staff/activate`,
-  },
 };
+
+// Staff invite: a one-click activation link instead of a code.
+// The token is in the URL fragment (#...), which browsers never send to the
+// website's server, so it doesn't end up in hosting logs or Referer headers.
+export function sendStaffInviteEmail({ to, name, token, expiresInHours }) {
+  const app = config.appName;
+  const link = `${config.clientUrls[0]}/staff/activate#token=${token}`;
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+
+  const html = `
+  <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#0f172a">
+    <h2 style="margin:0 0 4px;color:#4f46e5">${escapeHtml(app)}</h2>
+    <h3 style="margin:0 0 16px;font-weight:600">You're invited to the staff portal</h3>
+    <p style="margin:0 0 8px">${greeting}</p>
+    <p style="margin:0 0 20px">
+      An administrator gave you access to the ${escapeHtml(app)} staff portal, where you can see your
+      schedule and your clients' appointments, and manage your time off.
+    </p>
+    <p style="margin:0 0 20px;text-align:center">
+      <a href="${escapeHtml(link)}"
+         style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:700;
+                padding:14px 24px;border-radius:10px">Click This Message To Activate Your Account</a>
+    </p>
+    <p style="margin:0 0 8px;font-size:14px;color:#475569">You'll choose your password on the next page.</p>
+    <p style="margin:16px 0 0;font-size:13px;color:#64748b">
+      This link expires in ${expiresInHours} hours and works only once. Don't forward this email.
+      If you weren't expecting it, you can safely ignore it.
+    </p>
+  </div>`;
+
+  const text = `${greeting}\n\nAn administrator gave you access to the ${app} staff portal.\n\nActivate your account: ${link}\n\nThis link expires in ${expiresInHours} hours and works only once. If you weren't expecting it, ignore this email.`;
+
+  return sendEmail({ to, toName: name, subject: `Activate your ${app} staff account`, html, text });
+}
 
 const expiryText = (minutes) => (minutes >= 120 && minutes % 60 === 0 ? `${minutes / 60} hours` : `${minutes} minutes`);
 

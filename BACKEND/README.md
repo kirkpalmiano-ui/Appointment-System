@@ -98,10 +98,10 @@ Staff accounts are created only by an admin invite. Every staff query is filtere
 
 | Method | Endpoint | Access | Notes |
 |---|---|---|---|
-| POST | `/api/staff/:id/invite` | Admin | Creates the staff login (if needed) and emails a code valid for 24 hours |
+| POST | `/api/staff/:id/invite` | Admin | Creates the staff login (if needed) and emails a one-click activation link (24 hours, single-use; resend after 60 s replaces the old link) |
 | DELETE | `/api/staff/:id/access` | Admin | Deletes the staff login; all their sessions end immediately |
-| POST | `/api/auth/staff/activate` | Public | `email, otp, password` → staff session |
-| POST | `/api/auth/staff/resend` | Public | `email` (same response whether or not an invite exists) |
+| POST | `/api/auth/staff/invite` | Public | `token` (from the email link) → `{ name, email }` for the activation page |
+| POST | `/api/auth/staff/activate` | Public | `token, password` → staff session. The link is single-use and expires after 24 hours |
 | GET | `/api/staff-portal/me` | Staff | Own staff record (services, hours) |
 | GET | `/api/staff-portal/summary` | Staff | Today / next 7 days / to confirm / completed |
 | GET | `/api/staff-portal/day?date=` | Staff | That day's appointments (with client contact info) and time off |

@@ -66,7 +66,7 @@ export default function Staff() {
     setInviting(member._id);
     try {
       const { data } = await api.post(`/staff/${member._id}/invite`);
-      showToast(`${data.message} The code is valid for 24 hours.`);
+      showToast(`${data.message} The activation link is valid for ${data.expiresInHours ?? 24} hours.`);
       reload();
     } catch (err) {
       showToast(getErrorMessage(err), 'error');

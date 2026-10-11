@@ -1,53 +1,67 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
+import LinkOffRoundedIcon from '@mui/icons-material/LinkOffRounded';
 import api from '../api/axios';
 import IconBadge from '../components/IconBadge';
-import OtpInput from '../components/OtpInput';
+import PageLoader from '../components/PageLoader';
 import PasswordField from '../components/PasswordField';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
-import ResendCode from '../components/ResendCode';
 import SubmitButton from '../components/SubmitButton';
 import useAuth from '../hooks/useAuth';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
-import { getCooldownUntil, startCooldown } from '../utils/otpSession';
-import { validateEmail, validatePassword } from '../utils/validation';
+import { validatePassword } from '../utils/validation';
 
-const PURPOSE = 'staff-invite';
+// The activation link looks like /staff/activate#token=<64 hex chars>. The token
+// is in the fragment (#), which browsers never send to the web server.
+function readTokenFromLink() {
+  const match = window.location.hash.match(/token=([a-f0-9]{64})/);
+  return match ? match[1] : '';
+}
 
-// Staff set up their account with the code from the admin's invite email.
+// Staff open this page from the link in their invite email and choose a password.
 export default function StaffActivate() {
   const { saveSession } = useAuth();
   const navigate = useNavigate();
 
-  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '' });
-  const [code, setCode] = useState('');
+  const [token] = useState(readTokenFromLink);
+  // checking -> ready (show the form) | invalid (expired/used/missing link)
+  const [invite, setInvite] = useState(() => (token ? { status: 'checking' } : { status: 'invalid' }));
+  const [form, setForm] = useState({ password: '', confirmPassword: '' });
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
-  const email = form.email.trim().toLowerCase();
-  const [cooldownUntil, setCooldownUntil] = useState(0);
+
+  useEffect(() => {
+    if (!token) return undefined;
+    // Remove the secret from the address bar (and browser history) right away.
+    window.history.replaceState(null, '', window.location.pathname);
+    let active = true;
+    api
+      .post('/auth/staff/invite', { token })
+      .then(({ data }) => active && setInvite({ status: 'ready', name: data.name, email: data.email }))
+      .catch((err) => active && setInvite({ status: 'invalid', message: getErrorMessage(err) }));
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   const set = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: '' }));
-    if (field === 'email') setCooldownUntil(getCooldownUntil(PURPOSE, value.trim().toLowerCase()));
   };
 
   const submit = async (e) => {
     e.preventDefault();
     setError('');
     const next = {};
-    const emailError = validateEmail(form.email);
-    if (emailError) next.email = emailError;
-    if (!/^\d{6}$/.test(code.trim())) next.code = 'Enter the 6-digit code from your invite email.';
     const passwordError = validatePassword(form.password);
     if (passwordError) next.password = passwordError;
     if (form.confirmPassword !== form.password) next.confirmPassword = 'Passwords do not match.';
@@ -56,56 +70,53 @@ export default function StaffActivate() {
 
     setBusy(true);
     try {
-      const { data } = await api.post('/auth/staff/activate', { email, otp: code.trim(), password: form.password });
+      const { data } = await api.post('/auth/staff/activate', { token, password: form.password });
       saveSession(data.token, data.user);
       navigate('/staff', { replace: true });
     } catch (err) {
-      if (err.response?.data?.code === 'ALREADY_ACTIVE') {
-        navigate('/login', { replace: true, state: { message: 'Your staff account is already set up. Please log in.' } });
-        return;
+      if (err.response?.data?.code === 'INVITE_INVALID') {
+        setInvite({ status: 'invalid', message: getErrorMessage(err) });
+      } else {
+        setErrors(getFieldErrors(err));
+        setError(getErrorMessage(err));
       }
-      setErrors(getFieldErrors(err));
-      setError(getErrorMessage(err));
-      // Only clear the code when the code itself was the problem (not e.g. the password).
-      if (/^(OTP_|INVITE_)/.test(err.response?.data?.code ?? '')) setCode('');
       setBusy(false);
     }
   };
 
-  const resend = async () => {
-    setError('');
-    setNotice('');
-    const emailError = validateEmail(form.email);
-    if (emailError) {
-      setErrors({ email: emailError });
-      return;
-    }
-    try {
-      const { data } = await api.post('/auth/staff/resend', { email });
-      setCooldownUntil(startCooldown(PURPOSE, email, data.resendAvailableIn));
-      setNotice(data.message);
-    } catch (err) {
-      const retryAfter = err.response?.data?.retryAfter;
-      if (retryAfter) setCooldownUntil(startCooldown(PURPOSE, email, retryAfter));
-      setError(getErrorMessage(err));
-    }
-  };
+  if (invite.status === 'checking') return <PageLoader label="Checking your activation link..." />;
+
+  if (invite.status === 'invalid') {
+    return (
+      <>
+        <IconBadge icon={LinkOffRoundedIcon} color="warning" size={52} sx={{ mb: 2 }} />
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 700 }}>
+          This link can&apos;t be used
+        </Typography>
+        <Typography color="text.secondary" sx={{ mb: 3 }}>
+          {invite.message ||
+            'Staff accounts are activated from the link in your invite email. Please open the link from the email you received.'}
+        </Typography>
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Activation links expire after 24 hours and work only once. If yours has expired, ask an administrator to send you a new invite.
+        </Alert>
+        <Button component={RouterLink} to="/login" variant="outlined" fullWidth>
+          Go to log in
+        </Button>
+      </>
+    );
+  }
 
   return (
     <>
       <IconBadge icon={BadgeOutlinedIcon} size={52} sx={{ mb: 2 }} />
       <Typography variant="h5" component="h1" sx={{ fontWeight: 700 }}>
-        Set up your staff account
+        Activate your staff account
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Enter the 6-digit code from your invite email and choose a password.
+        Welcome, {invite.name}. Choose a password to finish setting up your account.
       </Typography>
 
-      {notice && !error && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          {notice}
-        </Alert>
-      )}
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
@@ -114,27 +125,13 @@ export default function StaffActivate() {
 
       <Box component="form" noValidate onSubmit={submit}>
         <Stack spacing={2.5}>
-          <TextField
-            label="Work email"
-            type="email"
-            slotProps={{ htmlInput: { maxLength: 64 } }}
-            autoComplete="username"
-            autoFocus
-            value={form.email}
-            onChange={(e) => set('email', e.target.value)}
-            error={Boolean(errors.email)}
-            helperText={errors.email || 'The address your invite was sent to'}
-          />
-          <Box>
-            <Typography variant="body2" color={errors.code ? 'error' : 'text.secondary'} sx={{ mb: 1 }}>
-              {errors.code || 'Invite code'}
-            </Typography>
-            <OtpInput value={code} onChange={setCode} disabled={busy} invalid={Boolean(errors.code)} autoFocus={false} />
-          </Box>
+          {/* Shown read-only; also helps password managers save the right login. */}
+          <TextField label="Work email" type="email" value={invite.email} autoComplete="username" disabled helperText="This is your login" />
           <Box>
             <PasswordField
               label="New password"
               autoComplete="new-password"
+              autoFocus
               value={form.password}
               onChange={(e) => set('password', e.target.value)}
               error={errors.password}
@@ -149,17 +146,14 @@ export default function StaffActivate() {
             onChange={(e) => set('confirmPassword', e.target.value)}
             error={errors.confirmPassword}
           />
-          <SubmitButton busy={busy} busyText="Setting up...">
+          <SubmitButton busy={busy} busyText="Activating...">
             Activate account
           </SubmitButton>
         </Stack>
       </Box>
 
-      <Box sx={{ mt: 3 }}>
-        <ResendCode cooldownUntil={cooldownUntil} onResend={resend} disabled={busy} />
-      </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
-        Already set up?{' '}
+      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 3 }}>
+        Already activated?{' '}
         <Link component={RouterLink} to="/login">
           Log in
         </Link>

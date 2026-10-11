@@ -3,12 +3,12 @@ import rateLimit from 'express-rate-limit';
 import { accountLoginLimiter } from '../middleware/loginLimiter.js';
 import {
   activateStaff,
+  checkStaffInvite,
   forgotPassword,
   login,
   me,
   register,
   resendOtp,
-  resendStaffInvite,
   resetPassword,
   verifyEmail,
   verifyResetOtp,
@@ -21,6 +21,7 @@ import {
   resendOtpRules,
   resetPasswordRules,
   staffActivateRules,
+  staffInviteCheckRules,
   verifyEmailRules,
   verifyResetOtpRules,
 } from '../validators/rules.js';
@@ -61,8 +62,9 @@ router.post('/verify-reset-otp', verifyLimiter, verifyResetOtpRules, verifyReset
 router.post('/reset-password', verifyLimiter, resetPasswordRules, resetPassword);
 
 // Staff accounts: set a password with the code from the admin's invite.
+// (Invites are sent and re-sent by admins from the admin panel; there is no public resend.)
+router.post('/staff/invite', verifyLimiter, staffInviteCheckRules, checkStaffInvite);
 router.post('/staff/activate', verifyLimiter, staffActivateRules, activateStaff);
-router.post('/staff/resend', emailLimiter, forgotPasswordRules, resendStaffInvite);
 
 router.get('/me', protect, me);
 

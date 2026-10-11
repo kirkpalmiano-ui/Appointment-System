@@ -167,7 +167,12 @@ const listQuery = () => [
   query('search').optional().isString().isLength({ max: 50 }).withMessage('Search is too long.'),
 ];
 
-export const staffActivateRules = [email(), otpCode(), strongPassword('password'), validate];
+// Staff activation link token: 64 hex characters (32 random bytes).
+const inviteToken = () =>
+  body('token').isString().matches(/^[a-f0-9]{64}$/).withMessage('This activation link is invalid. Please open the link from your invite email.');
+
+export const staffInviteCheckRules = [inviteToken(), validate];
+export const staffActivateRules = [inviteToken(), strongPassword('password'), validate];
 
 // ---------- Staff portal & time off ----------
 
