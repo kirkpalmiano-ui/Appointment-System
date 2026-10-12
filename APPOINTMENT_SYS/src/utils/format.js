@@ -58,6 +58,20 @@ export function formatTime(hhmm) {
 
 export const formatTimeRange = (start, end) => `${formatTime(start)} – ${formatTime(end)}`;
 
+// Whole days from today (clinic time) to dateStr: 0 today, 1 tomorrow, negative in the past.
+export function daysFromToday(dateStr) {
+  return Math.round((parseDate(dateStr) - parseDate(todayString())) / 86400000);
+}
+
+// "Today", "Tomorrow", "In 3 days" — for upcoming dates only.
+export function countdownLabel(dateStr) {
+  const days = daysFromToday(dateStr);
+  if (days < 0) return '';
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  return `In ${days} days`;
+}
+
 // "Today", "Tomorrow" or a short date.
 export function relativeDay(dateStr) {
   const today = todayString();

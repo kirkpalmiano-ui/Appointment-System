@@ -2,21 +2,40 @@ import { useState } from 'react';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
+import InputAdornment from '@mui/material/InputAdornment';
 import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
+import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
+import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined';
 import api from '../api/axios';
 import PasswordField from '../components/PasswordField';
 import SubmitButton from '../components/SubmitButton';
 import useAuth from '../hooks/useAuth';
+import useIsMobile from '../hooks/useIsMobile';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
 import { setPendingEmail, startCooldown } from '../utils/otpSession';
 import { homeFor } from '../utils/roles';
 import { validateLogin } from '../utils/validation';
 
+// Once the on-screen keyboard has opened, scroll the focused field to the middle of the screen.
+const KEYBOARD_DELAY = 300;
+function scrollFieldIntoView(e) {
+  const field = e.target;
+  if (field.tagName !== 'INPUT') return;
+  const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.setTimeout(() => field.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' }), KEYBOARD_DELAY);
+}
+
 export default function Login() {
   const { login } = useAuth();
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
   // Where the user was trying to go before being sent to login (if anywhere).
@@ -76,11 +95,21 @@ export default function Login() {
 
   return (
     <>
-      <Typography variant="h5" component="h1" sx={{ fontWeight: 700 }}>
-        Welcome back
+      <Typography
+        component="h1"
+        sx={(theme) => ({
+          fontWeight: 800,
+          fontSize: '2rem',
+          letterSpacing: '-0.03em',
+          lineHeight: 1.15,
+          // Phones/tablets: the layout's big headline sits just above, so keep this one smaller.
+          [theme.breakpoints.down('md')]: { fontSize: '1.6rem' },
+        })}
+      >
+        Log in
       </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Log in to manage your appointments.
+      <Typography color="text.secondary" sx={{ mt: 0.5, mb: { xs: 3, md: 3.5 } }}>
+        Good to see you again. Enter your details below.
       </Typography>
 
       {location.state?.message && !serverError && (
@@ -94,40 +123,90 @@ export default function Login() {
         </Alert>
       )}
 
-      <Box component="form" noValidate onSubmit={handleSubmit}>
+      <Box component="form" noValidate onSubmit={handleSubmit} onFocus={isMobile ? scrollFieldIntoView : undefined}>
         <Stack spacing={2.5}>
           <TextField
             label="Email"
             type="email"
-            slotProps={{ htmlInput: { maxLength: 64 } }}
+            slotProps={{
+              htmlInput: { maxLength: 64 },
+              inputLabel: { shrink: true },
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <MailOutlineRoundedIcon sx={{ fontSize: 18 }} />
+                  </InputAdornment>
+                ),
+              },
+            }}
             name="email"
-            placeholder="user@example.com"
+            placeholder="you@example.com"
             autoComplete="email"
-            autoFocus
+            // On phones, don't pop the keyboard over the page as soon as it opens.
+            autoFocus={!isMobile}
             value={form.email}
             onChange={handleChange}
             error={Boolean(errors.email)}
             helperText={errors.email}
           />
           <Box>
-            <PasswordField label="Password" name="password" value={form.password} onChange={handleChange} error={errors.password} />
-            <Box sx={{ textAlign: 'right', mt: 1 }}>
-              <Link component={RouterLink} to="/forgot-password" state={{ email: form.email.trim() }} variant="body2">
-                Forgot password?
+            <PasswordField
+              label="Password"
+              name="password"
+              placeholder="Enter your password"
+              startIcon={<LockOutlinedIcon sx={{ fontSize: 18 }} />}
+              value={form.password}
+              onChange={handleChange}
+              error={errors.password}
+            />
+            <Box sx={{ textAlign: 'right', mt: { xs: 0.5, md: 1.25 } }}>
+              <Link
+                component={RouterLink}
+                to="/forgot-password"
+                state={{ email: form.email.trim() }}
+                variant="body2"
+                aria-label="Forgot password?"
+                // Phones/tablets: a 44px-tall tap area.
+                sx={(theme) => ({ fontWeight: 600, [theme.breakpoints.down('md')]: { display: 'inline-flex', alignItems: 'center', minHeight: 44, px: 0.5 } })}
+              >
+                <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>
+                  Forgot?
+                </Box>
+                <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                  Forgot password?
+                </Box>
               </Link>
             </Box>
           </Box>
-          <SubmitButton busy={submitting} busyText="Logging in...">
+          <SubmitButton busy={submitting} busyText="Logging in..." endIcon={submitting ? undefined : <ArrowForwardRoundedIcon sx={{ fontSize: 18 }} />}>
             Log in
           </SubmitButton>
         </Stack>
       </Box>
 
+      <Divider sx={{ my: 3, color: 'text.secondary', fontSize: 13 }}>or</Divider>
+
+      {/* Booking needs an account, so guests can browse what's offered instead. */}
+      <Button
+        component={RouterLink}
+        to="/#services"
+        variant="outlined"
+        fullWidth
+        startIcon={<ScheduleRoundedIcon sx={{ fontSize: 18 }} />}
+        sx={{ minHeight: 52 }}
+      >
+        Browse services as a guest
+      </Button>
+
       <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 3 }}>
         Don&apos;t have an account?{' '}
-        <Link component={RouterLink} to="/register">
+        <Link component={RouterLink} to="/register" sx={{ fontWeight: 600 }}>
           Sign up
         </Link>
+      </Typography>
+      <Typography variant="caption" component="p" color="text.secondary" sx={{ textAlign: 'center', mt: 1.5 }}>
+        <VerifiedUserOutlinedIcon sx={{ fontSize: 14, verticalAlign: '-2px', mr: 0.5 }} />
+        Passwords are securely hashed and never stored as plain text
       </Typography>
     </>
   );
