@@ -50,6 +50,10 @@ export async function updateProfile(req, res) {
     user.phone = phone || '';
     user.phoneCountry = phone ? phoneCountry : '';
   }
+  // Email settings (Profile → Appointment reminders), sent as flat booleans.
+  for (const key of ['emailReminders', 'statusUpdates', 'healthTips']) {
+    if (typeof req.body[key] === 'boolean') user.set(`notificationPrefs.${key}`, req.body[key]);
+  }
 
   if (newPassword) {
     assertAdminPasswordStrength(user, newPassword);

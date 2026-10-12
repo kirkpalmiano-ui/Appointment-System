@@ -1,52 +1,47 @@
 import { useEffect, useState } from 'react';
-import Alert from '@mui/material/Alert';
+import { useOutletContext } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogTitle from '@mui/material/DialogTitle';
+import CircularProgress from '@mui/material/CircularProgress';
 import Divider from '@mui/material/Divider';
-import IconButton from '@mui/material/IconButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
-import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
-import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
-import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
-import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
-import EditCalendarRoundedIcon from '@mui/icons-material/EditCalendarRounded';
-import EventBusyRoundedIcon from '@mui/icons-material/EventBusyRounded';
-import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
+import { useTheme } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import CalendarMonthRoundedIcon from '@mui/icons-material/CalendarMonthRounded';
+import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import FilterAltOffOutlinedIcon from '@mui/icons-material/FilterAltOffOutlined';
-import MoreVertRoundedIcon from '@mui/icons-material/MoreVertRounded';
-import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded';
+import TableRowsRoundedIcon from '@mui/icons-material/TableRowsRounded';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import api from '../api/axios';
 import { fetchAll } from '../api/fetchAll';
+import AppointmentDetailsDialog from '../components/appointments/AppointmentDetailsDialog';
+import AppointmentsTable from '../components/appointments/AppointmentsTable';
+import BulkActionBar from '../components/appointments/BulkActionBar';
+import DateRangeButton from '../components/appointments/DateRangeButton';
+import { ACTIONS, appointmentsCsv, availableActions, describeAppt } from '../components/appointments/actions';
+import useAppointmentCounts from '../components/appointments/useAppointmentCounts';
 import ConfirmDialog from '../components/ConfirmDialog';
 import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
 import RescheduleDialog from '../components/RescheduleDialog';
 import SearchField from '../components/SearchField';
-import StatusChip from '../components/StatusChip';
 import TablePager from '../components/TablePager';
+import FilterChips from '../components/ui/FilterChips';
+import FilterSelect from '../components/ui/FilterSelect';
+import SegmentedToggle from '../components/ui/SegmentedToggle';
+import { ErrorState } from '../components/ui/TableStates';
 import useApiList from '../hooks/useApiList';
 import useToast from '../hooks/useToast';
 import useUrlFilters, { FILTER } from '../hooks/useUrlFilters';
-import { STATUS_META, hasStarted, isActive } from '../utils/appointments';
+import { STATUS_META } from '../utils/appointments';
 import { getErrorMessage } from '../utils/errors';
-import { formatDate, formatDuration, formatPhone, formatPrice, formatTimeRange } from '../utils/format';
+import { formatPrice, todayString } from '../utils/format';
 
 const SCOPES = [
   { value: 'upcoming', label: 'Upcoming' },
@@ -54,49 +49,40 @@ const SCOPES = [
   { value: 'all', label: 'All' },
 ];
 
-// What each action does, for the menu and the confirmation dialog.
-const ACTIONS = {
-  confirmed: { label: 'Confirm', icon: CheckRoundedIcon, color: 'success', title: 'Confirm this appointment?', message: 'The client will see it as confirmed.' },
-  completed: { label: 'Mark completed', icon: TaskAltRoundedIcon, color: 'primary', title: 'Mark as completed?', message: 'Use this once the visit has taken place.' },
-  reopen: {
-    label: 'Reopen (not completed)',
-    icon: ReplayRoundedIcon,
-    color: 'warning',
-    title: 'Reopen this appointment?',
-    message: 'It goes back to confirmed. Use this if it was marked completed by mistake.',
-  },
-  cancelled: { label: 'Cancel', icon: EventBusyRoundedIcon, color: 'error', title: 'Cancel this appointment?', message: 'The time slot will be released for other clients.' },
-  delete: { label: 'Delete', icon: DeleteOutlineRoundedIcon, color: 'error', title: 'Delete this appointment?', message: 'It will be permanently removed. This cannot be undone.' },
-};
+const STATUS_DOTS = { pending: 'pending', confirmed: 'success', completed: 'neutral', cancelled: 'danger' };
 
-function availableActions(appt) {
-  const list = [];
-  if (appt.status === 'pending') list.push('confirmed');
-  if (isActive(appt) && hasStarted(appt)) list.push('completed');
-  if (isActive(appt)) list.push('reschedule', 'cancelled');
-  if (appt.status === 'completed') list.push('reopen');
-  list.push('delete');
-  return list;
-}
+// Excel needs a byte-order mark to read the CSV as UTF-8 (₱, accents).
+const BOM = String.fromCharCode(0xfeff);
+const plural = (n) => `${n} appointment${n === 1 ? '' : 's'}`;
 
-function Detail({ label, children }) {
+// Small count pill inside an underline tab.
+function TabLabel({ label, count, active }) {
   return (
-    <Box>
-      <Typography variant="caption" color="text.secondary">
-        {label}
-      </Typography>
-      <Typography component="div">{children}</Typography>
-    </Box>
+    <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+      <span>{label}</span>
+      {count !== null && count !== undefined && (
+        <Box
+          component="span"
+          sx={{ px: 0.75, minWidth: 22, height: 20, lineHeight: '20px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, bgcolor: active ? 'accent.main' : 'hover.main', color: active ? 'accent.contrastText' : 'text.secondary' }}
+        >
+          {count}
+        </Box>
+      )}
+    </Stack>
   );
 }
 
 export default function Appointments() {
   const showToast = useToast();
+  const theme = useTheme();
+  const compact = useMediaQuery(theme.breakpoints.down('sm'));
+  const { refreshCounts } = useOutletContext() ?? {};
   const [filters, setFilters] = useUrlFilters(
     { scope: 'upcoming', status: '', staff: '', from: '', to: '', q: '' },
     { scope: SCOPES.map((s) => s.value), status: Object.keys(STATUS_META), staff: FILTER.id, from: FILTER.date, to: FILTER.date, q: FILTER.search }
   );
   const [staffOptions, setStaffOptions] = useState([]);
+  const [view, setView] = useState('table');
 
   useEffect(() => {
     fetchAll('/staff', { includeInactive: true })
@@ -109,7 +95,7 @@ export default function Appointments() {
   const rangeReversed = Boolean(filters.from && filters.to && filters.from > filters.to);
   const [rangeFrom, rangeTo] = rangeReversed ? [filters.to, filters.from] : [filters.from, filters.to];
 
-  const { items, pagination, loading, error, reload } = useApiList('/appointments', {
+  const listParams = {
     scope: filters.scope === 'all' ? '' : filters.scope,
     status: filters.status,
     staff: filters.staff,
@@ -117,15 +103,43 @@ export default function Appointments() {
     to: rangeTo,
     search: filters.q,
     sort: filters.scope === 'past' ? 'desc' : 'asc',
-    page: filters.page,
-    limit: 10,
-  });
+  };
+  const { items, pagination, loading, error, reload } = useApiList('/appointments', { ...listParams, page: filters.page, limit: 10 });
+
+  // Tab and status-chip counts (see the hook for how they are fetched).
+  const [countsVersion, setCountsVersion] = useState(0);
+  const counts = useAppointmentCounts({ staff: filters.staff, from: rangeFrom, to: rangeTo, search: filters.q }, filters.scope, filters.status, countsVersion);
+
+  const [selected, setSelected] = useState(() => new Set());
+  const selectedRows = items.filter((a) => selected.has(a._id));
+  const clearSelection = () => setSelected(new Set());
+
+  // Any filter or page change starts a fresh selection.
+  const updateFilters = (changes) => {
+    clearSelection();
+    setFilters(changes);
+  };
 
   const [menu, setMenu] = useState(null); // { anchor, appt }
   const [details, setDetails] = useState(null);
-  const [pendingAction, setPendingAction] = useState(null); // { action, appt }
+  const [pendingAction, setPendingAction] = useState(null); // { action, appt } or { action: 'cancelled', rows }
   const [rescheduling, setRescheduling] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+  const [exporting, setExporting] = useState(false);
+
+  // Reload the list, the tab/chip counts and the sidebar's pending badge.
+  const refreshAll = () => {
+    reload();
+    setCountsVersion((n) => n + 1);
+    refreshCounts?.();
+  };
+
+  // The single per-appointment API call every action goes through.
+  const applyAction = (action, appt) =>
+    action === 'delete' ? api.delete(`/appointments/${appt._id}`) : api.put(`/appointments/${appt._id}`, { status: action === 'reopen' ? 'confirmed' : action });
+
+  const doneMessage = (action) => ({ delete: 'Appointment deleted.', reopen: 'Appointment reopened as confirmed.' })[action] ?? `Appointment ${STATUS_META[action].label.toLowerCase()}.`;
 
   const choose = (action, appt) => {
     setMenu(null);
@@ -134,17 +148,41 @@ export default function Appointments() {
     else setPendingAction({ action, appt });
   };
 
+  // Runs the same handler for each row, one after another, then one toast.
+  const runBulk = async (action, rows) => {
+    setBusy(true);
+    let ok = 0;
+    let lastError = null;
+    for (const appt of rows) {
+      try {
+        await applyAction(action, appt);
+        ok += 1;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    setBusy(false);
+    const verb = STATUS_META[action].label.toLowerCase();
+    if (lastError) showToast(`${ok} of ${rows.length} ${verb}. ${getErrorMessage(lastError)}`, ok ? 'info' : 'error');
+    else showToast(`${plural(ok)} ${verb}.`);
+    clearSelection();
+    refreshAll();
+  };
+
   const runAction = async () => {
+    if (pendingAction.rows) {
+      await runBulk(pendingAction.action, pendingAction.rows);
+      setPendingAction(null);
+      return;
+    }
     const { action, appt } = pendingAction;
     setBusy(true);
     try {
-      if (action === 'delete') await api.delete(`/appointments/${appt._id}`);
-      else await api.put(`/appointments/${appt._id}`, { status: action === 'reopen' ? 'confirmed' : action });
-      const done = { delete: 'Appointment deleted.', reopen: 'Appointment reopened as confirmed.' };
-      showToast(done[action] ?? `Appointment ${STATUS_META[action].label.toLowerCase()}.`);
+      await applyAction(action, appt);
+      showToast(doneMessage(action));
       setPendingAction(null);
       if (action === 'delete' && items.length === 1 && filters.page > 1) setFilters({ page: filters.page - 1 });
-      reload();
+      refreshAll();
     } catch (err) {
       showToast(getErrorMessage(err), 'error');
     } finally {
@@ -152,164 +190,200 @@ export default function Appointments() {
     }
   };
 
+  // Inline "Confirm" on a pending row: not destructive (it can be undone), so no dialog.
+  const quickConfirm = async (appt) => {
+    setBusyId(appt._id);
+    try {
+      await applyAction('confirmed', appt);
+      showToast(doneMessage('confirmed'));
+      refreshAll();
+    } catch (err) {
+      showToast(getErrorMessage(err), 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // CSV of every appointment matching the current tab and filters (all pages, via
+  // fetchAll, which stops at 1,000 rows), built in the browser.
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const rows = await fetchAll('/appointments', Object.fromEntries(Object.entries(listParams).filter(([, v]) => v)));
+      const blob = new Blob([BOM, appointmentsCsv(rows)], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `appointments-${filters.scope}-${todayString()}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${plural(rows.length)}.`, 'info');
+    } catch (err) {
+      showToast(getErrorMessage(err), 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const toggle = (id) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleAll = (on) => setSelected(on ? new Set(items.map((a) => a._id)) : new Set());
+
   const hasFilters = Boolean(filters.status || filters.staff || filters.from || filters.to || filters.q);
+  const totalValue = items.reduce((sum, a) => sum + (a.service?.price ?? 0), 0);
+  const empty = !loading && !error && items.length === 0;
+
+  const statusOptions = [
+    { value: '', label: 'All', count: counts.byStatus.all },
+    ...Object.entries(STATUS_META).map(([value, meta]) => ({ value, label: meta.label, dot: STATUS_DOTS[value], count: counts.byStatus[value] })),
+  ];
+  const staffSelect = [{ value: '', label: 'All' }, ...staffOptions.map((s) => ({ value: s._id, label: s.name }))];
+
+  const menuActions = menu ? availableActions(menu.appt).filter((a) => !(a === 'confirmed' && menu.appt.status === 'pending')) : [];
 
   return (
     <>
-      <PageHeader title="Appointments" description="Confirm, complete, reschedule or cancel bookings." />
+      <PageHeader
+        title="Appointments"
+        description="Confirm, complete, reschedule or cancel bookings"
+        action={
+          <>
+            <Button
+              variant="outlined"
+              startIcon={exporting ? <CircularProgress size={16} color="inherit" /> : <DownloadRoundedIcon />}
+              onClick={exportCsv}
+              disabled={exporting || !pagination?.total}
+            >
+              Export CSV
+            </Button>
+            {/* TODO(backend): POST /appointments is client-only (requireScope USER), so there is
+                no admin booking flow yet. Add a "+ New booking" primary button here once one exists. */}
+          </>
+        }
+      />
 
       <Card>
-        <Tabs value={filters.scope} onChange={(_e, value) => setFilters({ scope: value })} sx={{ px: 2 }}>
-          {SCOPES.map((s) => (
-            <Tab key={s.value} value={s.value} label={s.label} />
-          ))}
-        </Tabs>
-        <Divider />
-
-        <Box sx={{ p: 2, display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '2fr 1fr 1fr 1fr 1fr auto' }, alignItems: 'center' }}>
-          <SearchField value={filters.q} onChange={(q) => setFilters({ q })} placeholder="Search client, service, specialist or notes" />
-          <TextField
-            select
-            size="small"
-            label="Status"
-            value={filters.status}
-            onChange={(e) => setFilters({ status: e.target.value })}
-            slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-          >
-            <MenuItem value="">All statuses</MenuItem>
-            {Object.entries(STATUS_META).map(([value, meta]) => (
-              <MenuItem key={value} value={value}>
-                {meta.label}
-              </MenuItem>
+        {/* Tabs + view toggle */}
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'space-between', px: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={filters.scope} onChange={(_e, value) => updateFilters({ scope: value })} aria-label="Appointment period" variant="scrollable" scrollButtons={false} sx={{ minWidth: 0 }}>
+            {SCOPES.map((s) => (
+              <Tab key={s.value} value={s.value} label={<TabLabel label={s.label} count={counts.byScope[s.value]} active={filters.scope === s.value} />} sx={{ minHeight: 52 }} />
             ))}
-          </TextField>
-          <TextField
-            select
-            size="small"
-            label="Specialist"
-            value={staffOptions.some((s) => s._id === filters.staff) ? filters.staff : ''}
-            onChange={(e) => setFilters({ staff: e.target.value })}
-            slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
-          >
-            <MenuItem value="">All specialists</MenuItem>
-            {staffOptions.map((s) => (
-              <MenuItem key={s._id} value={s._id}>
-                {s.name}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            type="date"
-            size="small"
-            label="From"
-            value={filters.from}
-            onChange={(e) => setFilters({ from: e.target.value })}
-            slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: filters.to || undefined } }}
-          />
-          <TextField
-            type="date"
-            size="small"
-            label="To"
-            value={filters.to}
-            onChange={(e) => setFilters({ to: e.target.value })}
-            error={rangeReversed}
-            helperText={rangeReversed ? 'Earlier than From: showing the range in order' : undefined}
-            slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: filters.from || undefined } }}
-          />
-          <Button
-            startIcon={<FilterAltOffOutlinedIcon />}
-            color="inherit"
-            disabled={!hasFilters}
-            onClick={() => setFilters({ status: '', staff: '', from: '', to: '', q: '' })}
-          >
-            Clear
-          </Button>
-        </Box>
-        <Divider />
+          </Tabs>
+          {!compact && (
+            <SegmentedToggle
+              label="View"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'table', label: 'Table', icon: <TableRowsRoundedIcon /> },
+                // TODO: calendar view.
+                { value: 'calendar', label: 'Calendar', icon: <CalendarMonthRoundedIcon />, disabled: true, title: 'Coming soon' },
+              ]}
+            />
+          )}
+        </Stack>
 
-        {error && (
-          <Alert severity="error" sx={{ m: 2 }}>
-            {error}
-          </Alert>
+        {/* Quick status filter + toolbar */}
+        <Stack spacing={1.75} sx={{ p: 2 }}>
+          <FilterChips label="Status" value={filters.status} options={statusOptions} onChange={(status) => updateFilters({ status })} />
+          <Stack direction="row" spacing={1.25} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+            <SearchField
+              value={filters.q}
+              onChange={(q) => updateFilters({ q })}
+              placeholder="Search client, service, specialist or notes"
+              sx={{ flex: '1 1 260px', minWidth: { xs: '100%', sm: 220 } }}
+            />
+            <FilterSelect
+              label="Specialist"
+              value={staffOptions.some((s) => s._id === filters.staff) ? filters.staff : ''}
+              options={staffSelect}
+              onChange={(staff) => updateFilters({ staff })}
+            />
+            <DateRangeButton from={filters.from} to={filters.to} reversed={rangeReversed} onChange={updateFilters} />
+            {hasFilters && (
+              <Button size="small" color="inherit" startIcon={<FilterAltOffOutlinedIcon />} onClick={() => updateFilters({ status: '', staff: '', from: '', to: '', q: '' })} sx={{ minHeight: 40 }}>
+                Clear
+              </Button>
+            )}
+          </Stack>
+        </Stack>
+
+        {selectedRows.length > 0 && (
+          <BulkActionBar
+            rows={selectedRows}
+            busy={busy}
+            onConfirm={(rows) => runBulk('confirmed', rows)}
+            onReschedule={(appt) => setRescheduling(appt)}
+            onCancel={(rows) => setPendingAction({ action: 'cancelled', rows })}
+            onClear={clearSelection}
+          />
         )}
 
-        {loading ? (
-          <Box sx={{ p: 2 }}>
-            {[1, 2, 3, 4].map((n) => (
-              <Skeleton key={n} height={56} />
-            ))}
-          </Box>
-        ) : items.length === 0 && !error ? (
-          <EmptyState title={hasFilters ? 'No matching appointments' : 'No appointments here'} description={hasFilters ? 'Try different filters.' : undefined} />
+        <Divider />
+
+        {error && <ErrorState message={error} onRetry={refreshAll} />}
+
+        {empty ? (
+          <EmptyState
+            title={hasFilters ? 'No matching appointments' : 'No appointments here'}
+            description={hasFilters ? 'Try different filters, or clear them to see everything.' : undefined}
+            action={
+              hasFilters && (
+                <Button variant="outlined" size="small" onClick={() => updateFilters({ status: '', staff: '', from: '', to: '', q: '' })}>
+                  Clear filters
+                </Button>
+              )
+            }
+          />
         ) : (
-          <TableContainer>
-            <Table sx={{ minWidth: 820 }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Date & time</TableCell>
-                  <TableCell>Client</TableCell>
-                  <TableCell>Service</TableCell>
-                  <TableCell>Specialist</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {items.map((appt) => (
-                  <TableRow key={appt._id} hover onClick={() => setDetails(appt)} sx={{ cursor: 'pointer' }}>
-                    <TableCell>
-                      <Typography sx={{ fontWeight: 600 }}>{formatDate(appt.date)}</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {formatTimeRange(appt.startTime, appt.endTime)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography>{appt.user?.name ?? 'Deleted user'}</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {appt.user?.email}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{appt.service?.name ?? '—'}</TableCell>
-                    <TableCell>{appt.staff?.name ?? '—'}</TableCell>
-                    <TableCell>
-                      <StatusChip status={appt.status} />
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton
-                        aria-label="Actions"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenu({ anchor: e.currentTarget, appt });
-                        }}
-                      >
-                        <MoreVertRoundedIcon />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+          !error && (
+            <AppointmentsTable
+              compact={compact}
+              items={items}
+              loading={loading}
+              selected={selected}
+              onToggle={toggle}
+              onToggleAll={toggleAll}
+              onOpen={setDetails}
+              onConfirm={quickConfirm}
+              onMenu={(anchor, appt) => setMenu({ anchor, appt })}
+              busyId={busyId}
+            />
+          )
         )}
-        {!loading && <TablePager pagination={pagination} onChange={(page) => setFilters({ page })} />}
+        {!loading && (
+          <TablePager
+            pagination={pagination}
+            onChange={(page) => updateFilters({ page })}
+            summary={`Total value ${formatPrice(totalValue)}${pagination?.totalPages > 1 ? ' on this page' : ''}`}
+          />
+        )}
       </Card>
 
       {/* Row actions */}
-      <Menu anchorEl={menu?.anchor} open={Boolean(menu)} onClose={() => setMenu(null)}>
-        {menu &&
-          availableActions(menu.appt).map((key) => {
-            if (key === 'reschedule') {
-              return (
-                <MenuItem key={key} onClick={() => choose('reschedule', menu.appt)}>
-                  <ListItemIcon>
-                    <EditCalendarRoundedIcon fontSize="small" />
-                  </ListItemIcon>
-                  Reschedule
-                </MenuItem>
-              );
-            }
+      <Menu anchorEl={menu?.anchor} open={Boolean(menu)} onClose={() => setMenu(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}>
+        {menu && [
+          <MenuItem
+            key="view"
+            onClick={() => {
+              setDetails(menu.appt);
+              setMenu(null);
+            }}
+          >
+            <ListItemIcon>
+              <VisibilityOutlinedIcon fontSize="small" />
+            </ListItemIcon>
+            View details
+          </MenuItem>,
+          ...menuActions.flatMap((key) => {
             const { label, icon: Icon, color } = ACTIONS[key];
-            return (
+            const item = (
               <MenuItem key={key} onClick={() => choose(key, menu.appt)} sx={{ color: color === 'error' ? 'error.main' : undefined }}>
                 <ListItemIcon sx={{ color: 'inherit' }}>
                   <Icon fontSize="small" />
@@ -317,90 +391,44 @@ export default function Appointments() {
                 {label}
               </MenuItem>
             );
-          })}
+            return key === 'delete' ? [<Divider key="sep" />, item] : [item];
+          }),
+        ]}
       </Menu>
 
-      {/* Details */}
-      <Dialog open={Boolean(details)} onClose={() => setDetails(null)} maxWidth="xs" fullWidth>
-        {details && (
-          <>
-            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-              Appointment
-              <StatusChip status={details.status} />
-            </DialogTitle>
-            <DialogContent>
-              <Stack spacing={2}>
-                <Detail label="When">
-                  {formatDate(details.date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                  <Typography variant="body2" color="text.secondary">
-                    {formatTimeRange(details.startTime, details.endTime)}
-                  </Typography>
-                </Detail>
-                <Detail label="Client">
-                  {details.user?.name ?? 'Deleted user'}
-                  <Typography variant="body2" color="text.secondary">
-                    {details.user?.email}
-                    {details.user?.phone ? ` · ${formatPhone(details.user.phone)}` : ''}
-                  </Typography>
-                </Detail>
-                <Detail label="Service">
-                  {details.service?.name ?? 'Service removed'}
-                  {details.service && (
-                    <Typography variant="body2" color="text.secondary">
-                      {formatDuration(details.service.durationMinutes)} · {formatPrice(details.service.price)}
-                    </Typography>
-                  )}
-                </Detail>
-                <Detail label="Specialist">{details.staff?.name ?? 'Staff removed'}</Detail>
-                <Divider />
-                <Detail label="Client notes">
-                  <Typography sx={{ whiteSpace: 'pre-wrap', color: details.notes ? 'text.primary' : 'text.disabled' }}>{details.notes || 'No notes'}</Typography>
-                </Detail>
-                <Detail label="Staff notes (private, never shown to the client)">
-                  <Typography sx={{ whiteSpace: 'pre-wrap', color: details.staffNotes ? 'text.primary' : 'text.disabled' }}>
-                    {details.staffNotes || 'None'}
-                  </Typography>
-                </Detail>
-                <Typography variant="caption" color="text.secondary">
-                  Booked {new Date(details.createdAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
-                </Typography>
-              </Stack>
-            </DialogContent>
-            <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
-              {availableActions(details)
-                .filter((a) => a !== 'delete')
-                .map((key) => (
-                  <Button key={key} onClick={() => choose(key, details)} color={key === 'reschedule' ? 'primary' : ACTIONS[key].color}>
-                    {key === 'reschedule' ? 'Reschedule' : ACTIONS[key].label}
-                  </Button>
-                ))}
-              <Button onClick={() => setDetails(null)} variant="contained">
-                Close
-              </Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
+      <AppointmentDetailsDialog appointment={details} onClose={() => setDetails(null)} onAction={choose} />
 
       <ConfirmDialog
         open={Boolean(pendingAction)}
         busy={busy}
-        title={pendingAction && ACTIONS[pendingAction.action].title}
+        title={pendingAction && (pendingAction.rows ? `Cancel ${plural(pendingAction.rows.length)}?` : ACTIONS[pendingAction.action].title)}
         message={
-          pendingAction && (
+          pendingAction &&
+          (pendingAction.rows ? (
+            <>
+              {pendingAction.rows.slice(0, 5).map((a) => (
+                <Box key={a._id}>
+                  <strong>{a.user?.name ?? 'Client'}</strong> · {describeAppt(a)}
+                </Box>
+              ))}
+              {pendingAction.rows.length > 5 && <Box>and {pendingAction.rows.length - 5} more</Box>}
+              <br />
+              Their time slots will be released for other clients.
+            </>
+          ) : (
             <>
               <strong>
                 {pendingAction.appt.user?.name ?? 'Client'} · {pendingAction.appt.service?.name ?? 'Service'}
               </strong>
               <br />
-              {formatDate(pendingAction.appt.date)}, {formatTimeRange(pendingAction.appt.startTime, pendingAction.appt.endTime)}
+              {describeAppt(pendingAction.appt)}
               <br />
               <br />
               {ACTIONS[pendingAction.action].message}
             </>
-          )
+          ))
         }
-        confirmText={pendingAction && ACTIONS[pendingAction.action].label}
+        confirmText={pendingAction && (pendingAction.rows ? 'Cancel appointments' : ACTIONS[pendingAction.action].label)}
         cancelText="Go back"
         color={pendingAction ? ACTIONS[pendingAction.action].color : 'primary'}
         onConfirm={runAction}
@@ -413,8 +441,9 @@ export default function Appointments() {
           onClose={() => setRescheduling(null)}
           onSaved={() => {
             setRescheduling(null);
+            clearSelection();
             showToast('Appointment rescheduled.');
-            reload();
+            refreshAll();
           }}
         />
       )}

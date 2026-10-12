@@ -140,6 +140,11 @@ export const updateProfileRules = [
   phone(),
   strongPassword('newPassword').optional({ values: 'falsy' }),
   body('currentPassword').optional().isString().isLength({ max: 32 }).withMessage('Password must be 32 characters or less.'),
+  // Email settings are sent as flat booleans (the sanitizer rejects nested objects).
+  body(['emailReminders', 'statusUpdates', 'healthTips'])
+    .optional()
+    .isBoolean({ strict: true })
+    .withMessage('Notification settings must be on or off.'),
   validate,
 ];
 

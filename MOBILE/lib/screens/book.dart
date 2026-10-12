@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cliniquick/services/api.dart';
 import 'package:cliniquick/utils/format.dart';
+import 'package:cliniquick/theme.dart';
 import 'package:cliniquick/widgets/common.dart';
+import 'package:cliniquick/widgets/motion.dart';
+import 'package:cliniquick/widgets/ui.dart';
+import 'package:cliniquick/widgets/book/booking_bar.dart';
+import 'package:cliniquick/widgets/book/selectable.dart';
+import 'package:cliniquick/widgets/book/service_card.dart';
+import 'package:cliniquick/widgets/book/staff_card.dart';
+import 'package:cliniquick/widgets/book/time_slot_grid.dart';
+import 'package:cliniquick/widgets/book/week_date_picker.dart';
 
 // Book a new appointment, or reschedule one when an appointment is passed
 // as the route argument. Steps: Service -> Specialist -> Date & Time -> Confirm.
@@ -15,6 +24,7 @@ class BookPage extends State<BookState> {
   static const int maxDaysAhead = 60;
 
   TextEditingController notesController = TextEditingController();
+  TextEditingController searchController = TextEditingController();
 
   Map<String, dynamic>? rescheduling; // the appointment being moved, if any
   int step = 0;
@@ -28,6 +38,8 @@ class BookPage extends State<BookState> {
   String startTime = "";
   String slotMessage = "";
   String error = "";
+  String query = ""; // service search
+  String category = ""; // service filter chip ("" = All)
   bool loading = true;
   bool saving = false;
   bool started = false;
@@ -48,6 +60,7 @@ class BookPage extends State<BookState> {
   @override
   void dispose() {
     notesController.dispose();
+    searchController.dispose();
     super.dispose();
   }
 
@@ -96,6 +109,7 @@ class BookPage extends State<BookState> {
       date = "";
       startTime = "";
       slots = [];
+      slotMessage = "";
       unavailableDates = [];
     });
     try {
@@ -116,33 +130,35 @@ class BookPage extends State<BookState> {
     return workingDays.contains(day.weekday % 7) && !unavailableDates.contains(toDateString(day));
   }
 
-  Future<void> chooseDate() async {
+  // Today .. today + maxDaysAhead, shown a week at a time.
+  List<DateTime> bookingDays() {
     final today = DateTime.now();
     final first = DateTime(today.year, today.month, today.day);
-    final last = first.add(const Duration(days: maxDaysAhead));
-    // The picker needs a selectable starting day.
-    DateTime initial = date.isNotEmpty ? parseDate(date) : first;
-    while (!isBookableDay(initial) && initial.isBefore(last)) {
-      initial = initial.add(const Duration(days: 1));
+    return [for (var i = 0; i <= maxDaysAhead; i++) DateTime(first.year, first.month, first.day + i)];
+  }
+
+  // Entering the date step with no day chosen picks the first open day.
+  Future<void> autoPickDate() async {
+    if (date.isNotEmpty || staff == null) return;
+    for (final day in bookingDays()) {
+      if (isBookableDay(day)) return chooseDate(day);
     }
-    if (!isBookableDay(initial)) {
-      showMessage(context, "${staff?["name"]} has no open days in the next $maxDaysAhead days.", error: true);
-      return;
-    }
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: first,
-      lastDate: last,
-      selectableDayPredicate: isBookableDay,
-      helpText: "Choose a date",
-    );
-    if (picked == null) return;
+    showMessage(context, "${staff?["name"]} has no open days in the next $maxDaysAhead days.", error: true);
+  }
+
+  Future<void> chooseDate(DateTime picked) async {
     setState(() {
       date = toDateString(picked);
       startTime = "";
     });
     await loadSlots();
+  }
+
+  // Switching specialist on the date step: reload their days off, then pick a day again.
+  Future<void> switchStaff(Map<String, dynamic> picked) async {
+    if (staff?["_id"] == picked["_id"]) return;
+    await pickStaff(picked);
+    if (mounted && step == 2) await autoPickDate();
   }
 
   Future<void> loadSlots() async {
@@ -210,165 +226,406 @@ class BookPage extends State<BookState> {
     return !saving;
   }
 
-  Widget serviceStep() {
-    if (services.isEmpty) return const Text("No services are available right now.");
-    return Column(
-      children: [
-        for (final s in services)
-          Card(
-            color: service?["_id"] == s["_id"] ? Colors.deepPurple.shade50 : null,
-            child: ListTile(
-              title: Text(s["name"], style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text("${formatDuration(s["durationMinutes"])} • ${formatPrice(s["price"])}"
-                  "${(s["description"] ?? "").isNotEmpty ? "\n${s["description"]}" : ""}"),
-              trailing: service?["_id"] == s["_id"] ? const Icon(Icons.check_circle, color: Colors.deepPurple) : null,
-              onTap: () => pickService(Map<String, dynamic>.from(s)),
-            ),
-          ),
-      ],
-    );
+  void goNext() {
+    if (step < 3) {
+      setState(() => step++);
+      if (step == 2 && date.isEmpty) autoPickDate();
+    } else {
+      submit();
+    }
   }
 
-  Widget staffStep() {
-    if (staffList.isEmpty) return const Text("No specialists offer this service yet.");
-    return Column(
-      children: [
-        for (final s in staffList)
-          Card(
-            color: staff?["_id"] == s["_id"] ? Colors.deepPurple.shade50 : null,
-            child: ListTile(
-              leading: CircleAvatar(child: Text(s["name"].toString().substring(0, 1))),
-              title: Text(s["name"], style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text("${s["specialization"] ?? ""}\n"
-                  "${(List<int>.from(s["workingDays"] ?? [])..sort((a, b) => ((a + 6) % 7).compareTo((b + 6) % 7))).map((d) => dayNames[(d + 6) % 7]).join(", ")} • "
-                  "${formatTimeRange(s["startTime"], s["endTime"])}"),
-              isThreeLine: true,
-              trailing: staff?["_id"] == s["_id"] ? const Icon(Icons.check_circle, color: Colors.deepPurple) : null,
-              onTap: () => pickStaff(Map<String, dynamic>.from(s)),
-            ),
-          ),
-      ],
-    );
+  void goBack() {
+    if (step > 0) {
+      setState(() => step--);
+    } else {
+      Navigator.pop(context);
+    }
   }
 
-  Widget dateStep() {
+  // Only ask before leaving when there is something to lose.
+  bool hasChoices() {
+    final notes = notesController.text.trim();
+    if (rescheduling != null) {
+      return startTime.isNotEmpty || notes != (rescheduling!["notes"] ?? "").toString().trim();
+    }
+    return service != null || staff != null || startTime.isNotEmpty || notes.isNotEmpty;
+  }
+
+  Future<void> closeBooking() async {
+    if (hasChoices() && !await confirmDialog(context, "Leave booking?", "Your choices won't be saved.", "Leave")) return;
+    if (mounted) Navigator.pop(context);
+  }
+
+  // ---------- Steps ----------
+
+  Widget serviceStep(AppColors c) {
+    if (services.isEmpty) return Text("No services are available right now.", style: TextStyle(color: c.muted));
+    // Only offer filters that match at least one service.
+    final chips = [
+      for (final id in categoryChipOrder)
+        if (services.any((s) => categoryOf(s)?.id == id)) serviceCategories.firstWhere((cat) => cat.id == id),
+    ];
+    final needle = query.trim().toLowerCase();
+    final shown = [
+      for (var i = 0; i < services.length; i++)
+        if ((category.isEmpty || categoryOf(services[i])?.id == category) &&
+            (needle.isEmpty ||
+                (services[i]["name"] ?? "").toString().toLowerCase().contains(needle) ||
+                (services[i]["description"] ?? "").toString().toLowerCase().contains(needle)))
+          i,
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        OutlinedButton.icon(
-          onPressed: chooseDate,
-          icon: const Icon(Icons.calendar_today),
-          label: Text(date.isEmpty ? "Choose a date" : formatDate(date)),
+        TextField(
+          controller: searchController,
+          onChanged: (value) => setState(() => query = value),
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: "Search services",
+            prefixIcon: Icon(Icons.search_rounded, color: c.muted),
+            suffixIcon: query.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: "Clear search",
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () {
+                      searchController.clear();
+                      setState(() => query = "");
+                    },
+                  ),
+          ),
         ),
-        const SizedBox(height: 12),
-        if (slotMessage.isNotEmpty) Text(slotMessage, style: const TextStyle(color: Colors.black54)),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+        if (chips.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            child: Row(
+              children: [
+                FilterPill(label: "All", selected: category.isEmpty, onTap: () => setState(() => category = "")),
+                for (final cat in chips) ...[
+                  const SizedBox(width: 8),
+                  FilterPill(label: cat.label, selected: category == cat.id, onTap: () => setState(() => category = cat.id)),
+                ],
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        if (shown.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Text("No services match your search.", textAlign: TextAlign.center, style: TextStyle(color: c.muted)),
+          ),
+        for (final i in shown)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: ServiceCard(
+              service: services[i],
+              index: i,
+              selected: service?["_id"] == services[i]["_id"],
+              onTap: () => pickService(Map<String, dynamic>.from(services[i])),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget staffStep(AppColors c) {
+    if (staffList.isEmpty) return Text("No specialists offer this service yet.", style: TextStyle(color: c.muted));
+    Widget card(dynamic s) => StaffCard(
+          staff: s,
+          selected: staff?["_id"] == s["_id"],
+          onTap: () => pickStaff(Map<String, dynamic>.from(s)),
+        );
+    // One specialist: a full-width card. More: a horizontally scrolling row.
+    if (staffList.length < 2) return card(staffList.first);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      physics: const BouncingScrollPhysics(),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final slot in slots)
-              ChoiceChip(
-                label: Text(formatTime(slot["startTime"])),
-                selected: startTime == slot["startTime"],
-                onSelected: slot["available"] == true ? (_) => setState(() => startTime = slot["startTime"]) : null,
-                tooltip: slot["available"] == true ? null : capitalize(slot["reason"] ?? "unavailable"),
-              ),
+            for (var i = 0; i < staffList.length; i++) ...[
+              if (i > 0) const SizedBox(width: 12),
+              SizedBox(width: 220, child: card(staffList[i])),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget dateStep(AppColors c) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (staffList.isNotEmpty) ...[
+          const Eyebrow("Specialist"),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 70,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              physics: const BouncingScrollPhysics(),
+              itemCount: staffList.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
+              itemBuilder: (context, i) => SizedBox(
+                width: 220,
+                child: StaffCard(
+                  staff: staffList[i],
+                  compact: true,
+                  selected: staff?["_id"] == staffList[i]["_id"],
+                  onTap: () => switchStaff(Map<String, dynamic>.from(staffList[i])),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+        ],
+        WeekDatePicker(
+          dates: bookingDays(),
+          value: date,
+          isDisabled: (day) => !isBookableDay(day),
+          onChange: chooseDate,
+        ),
+        const SizedBox(height: 22),
+        const DashedLine(),
+        const SizedBox(height: 22),
+        if (slotMessage.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(slotMessage, style: TextStyle(color: c.muted)),
+          ),
+        TimeSlotGrid(slots: slots, value: startTime, onChange: (time) => setState(() => startTime = time)),
+        const SizedBox(height: 20),
+        const SlotLegend(),
       ],
     );
   }
 
-  Widget confirmStep() {
-    Widget row(String label, String value) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(width: 100, child: Text(label, style: const TextStyle(color: Colors.black54))),
-              Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.bold))),
-            ],
-          ),
-        );
+  Widget confirmStep(AppColors c) {
     final endSlot = slots.where((s) => s["startTime"] == startTime);
+    final rows = [
+      (service == null ? Icons.medical_services_outlined : serviceIcon(service!), "Service", service?["name"] ?? ""),
+      (Icons.person_outline_rounded, "Specialist", staff?["name"] ?? ""),
+      (Icons.calendar_today_outlined, "Date", date.isEmpty ? "" : formatDate(date)),
+      (Icons.schedule_rounded, "Time", startTime.isEmpty ? "" : (endSlot.isEmpty ? formatTime(startTime) : formatTimeRange(startTime, endSlot.first["endTime"]))),
+      (Icons.payments_outlined, "Price", service == null ? "" : formatPrice(service!["price"])),
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        row("Service", service?["name"] ?? ""),
-        row("Specialist", staff?["name"] ?? ""),
-        row("Date", date.isEmpty ? "" : formatDate(date)),
-        row("Time", startTime.isEmpty ? "" : (endSlot.isEmpty ? formatTime(startTime) : formatTimeRange(startTime, endSlot.first["endTime"]))),
-        row("Price", service == null ? "" : formatPrice(service!["price"])),
-        const SizedBox(height: 12),
+        FrostedCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Column(
+            children: [
+              for (var i = 0; i < rows.length; i++) ...[
+                if (i > 0) const DashedLine(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    children: [
+                      IconTile(rows[i].$1, bg: tileTone(c, i).$1, fg: tileTone(c, i).$2),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Eyebrow(rows[i].$2),
+                            const SizedBox(height: 3),
+                            Text(
+                              rows[i].$3,
+                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: i == rows.length - 1 ? 18 : 15.5, color: c.text),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
         TextField(
           controller: notesController,
           maxLength: 250,
           maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: "Notes for the clinic (optional)",
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(labelText: "Notes for the clinic (optional)"),
         ),
       ],
+    );
+  }
+
+  // ---------- Layout ----------
+
+  static const stepTitles = ["Choose a service.", "Choose a specialist.", "Pick a time.", "Confirm."];
+
+  String stepSubtitle() {
+    final serviceContext = service == null ? "" : "${service!["name"]} · ${formatDuration(service!["durationMinutes"])}";
+    if (step == 0) {
+      return rescheduling != null
+          ? "Pick a new time. You can also change the service or specialist."
+          : "Choose a service, a specialist and a time that works for you.";
+    }
+    if (step == 3) return "Check the details, add a note if you like, then confirm.";
+    if (serviceContext.isNotEmpty) return serviceContext;
+    return step == 1 ? "Pick who you would like to see." : "Live availability for the next $maxDaysAhead days.";
+  }
+
+  Widget topBar(AppColors c) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+      child: Row(
+        children: [
+          IconButton(tooltip: "Back", icon: const Icon(Icons.arrow_back_rounded), color: c.text, onPressed: goBack),
+          Expanded(
+            child: Text(
+              "Step ${step + 1} of 4",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: c.muted),
+            ),
+          ),
+          IconButton(tooltip: "Close booking", icon: const Icon(Icons.close_rounded), color: c.text, onPressed: closeBooking),
+        ],
+      ),
+    );
+  }
+
+  Widget progressBar(AppColors c) {
+    final duration = reduceMotion(context) ? Duration.zero : const Duration(milliseconds: 300);
+    return Semantics(
+      label: "Step ${step + 1} of 4",
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+        child: Row(
+          children: [
+            for (var i = 0; i < 4; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: AnimatedContainer(
+                  duration: duration,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: i <= step ? c.primary : c.border,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget bookingBar() {
+    String summary;
+    if (date.isNotEmpty && startTime.isNotEmpty) {
+      final d = parseDate(date);
+      summary = "${dayNames[d.weekday - 1]}, ${monthNames[d.month - 1]} ${d.day} · ${formatTime(startTime)}";
+    } else {
+      summary = service?["name"] ?? "Choose a service";
+    }
+    final label = step < 2
+        ? "Continue"
+        : step == 2
+            ? "Review & confirm"
+            : (saving ? "Saving..." : (rescheduling != null ? "Reschedule" : "Book appointment"));
+    return BookingBar(
+      summary: summary,
+      price: service == null ? null : formatPrice(service!["price"]),
+      label: label,
+      showArrow: step < 3,
+      saving: saving,
+      onPressed: canContinue() ? goNext : null,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(rescheduling != null ? "Reschedule" : "Book Appointment")),
-      drawer: rescheduling != null ? null : const AppDrawer(),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                if (error.isNotEmpty) Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 0), child: errorBox(error)),
-                Expanded(
-                  child: Stepper(
-                    currentStep: step,
-                    onStepTapped: (index) {
-                      // Only go back, or forward to steps already completed.
-                      if (index < step) setState(() => step = index);
-                    },
-                    onStepContinue: canContinue()
-                        ? () {
-                            if (step < 3) {
-                              setState(() => step++);
-                              if (step == 2 && date.isEmpty) chooseDate();
-                            } else {
-                              submit();
-                            }
-                          }
-                        : null,
-                    onStepCancel: step > 0 ? () => setState(() => step--) : null,
-                    controlsBuilder: (context, details) => Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: Row(
-                        spacing: 8,
+    final c = AppColors.of(context);
+    final bottomSpace = bookingBarHeight + 24 + MediaQuery.paddingOf(context).bottom;
+    return PopScope(
+      // System back steps back through the wizard first.
+      canPop: step == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && step > 0) setState(() => step--);
+      },
+      child: AppScaffold(
+        tab: AppTab.none,
+        showTabBar: false,
+        bottomBar: bookingBar(),
+        body: Column(
+          children: [
+            topBar(c),
+            progressBar(c),
+            Expanded(
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : AnimatedSwitcher(
+                      duration: reduceMotion(context) ? Duration.zero : const Duration(milliseconds: 280),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween(begin: const Offset(0.06, 0), end: Offset.zero).animate(animation),
+                          child: child,
+                        ),
+                      ),
+                      child: ListView(
+                        key: ValueKey(step),
+                        padding: EdgeInsets.fromLTRB(16, 20, 16, bottomSpace),
                         children: [
-                          FilledButton(
-                            onPressed: details.onStepContinue,
-                            child: Text(step < 3 ? "Continue" : (saving ? "Saving..." : (rescheduling != null ? "Reschedule" : "Book appointment"))),
-                          ),
-                          if (step > 0) TextButton(onPressed: details.onStepCancel, child: const Text("Back")),
+                          PageTitle(stepTitles[step], subtitle: stepSubtitle()),
+                          const SizedBox(height: 20),
+                          if (error.isNotEmpty) _ErrorBanner(error),
+                          [serviceStep, staffStep, dateStep, confirmStep][step](c),
                         ],
                       ),
                     ),
-                    steps: [
-                      Step(title: const Text("Service"), subtitle: service != null ? Text(service!["name"]) : null, content: serviceStep(), isActive: step >= 0),
-                      Step(title: const Text("Specialist"), subtitle: staff != null ? Text(staff!["name"]) : null, content: staffStep(), isActive: step >= 1),
-                      Step(
-                        title: const Text("Date & Time"),
-                        subtitle: startTime.isNotEmpty ? Text("${formatDate(date)}, ${formatTime(startTime)}") : null,
-                        content: dateStep(),
-                        isActive: step >= 2,
-                      ),
-                      Step(title: const Text("Confirm"), content: confirmStep(), isActive: step >= 3),
-                    ],
-                  ),
-                ),
-              ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Server error message, in the theme's danger colour (light and dark).
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+  const _ErrorBanner(this.message);
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: c.danger.withValues(alpha: 0.1),
+        border: Border.all(color: c.danger.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 20, color: c.danger),
+          const SizedBox(width: 10),
+          Expanded(child: Text(message, style: TextStyle(color: c.danger))),
+        ],
+      ),
     );
   }
 }

@@ -7,7 +7,8 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 
 // Password TextField with a show/hide toggle; `error` is the message to show.
 // Capped at 32 characters (the server enforces the same).
-export default function PasswordField({ error, helperText, autoComplete = 'current-password', ...props }) {
+// `startIcon` adds a leading icon (and keeps the label raised so a placeholder can show).
+export default function PasswordField({ error, helperText, autoComplete = 'current-password', startIcon, ...props }) {
   const [visible, setVisible] = useState(false);
 
   return (
@@ -19,7 +20,9 @@ export default function PasswordField({ error, helperText, autoComplete = 'curre
       {...props}
       slotProps={{
         htmlInput: { maxLength: 32 },
+        ...(startIcon && { inputLabel: { shrink: true } }),
         input: {
+          ...(startIcon && { startAdornment: <InputAdornment position="start">{startIcon}</InputAdornment> }),
           endAdornment: (
             <InputAdornment position="end">
               <IconButton

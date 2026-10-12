@@ -5,6 +5,7 @@ import TimeOff from '../models/TimeOff.js';
 import User from '../models/User.js';
 import { isAdminRequest } from '../middleware/auth.js';
 import ApiError from '../utils/ApiError.js';
+import { notifyClientOfChange } from '../utils/appointmentEmails.js';
 import { audit } from '../utils/audit.js';
 import { getPagination, paginated, searchRegex } from '../utils/query.js';
 import {
@@ -208,7 +209,8 @@ export async function listAppointments(req, res) {
     ];
   }
 
-  const direction = req.query.sort === 'asc' || req.query.scope === 'upcoming' ? 1 : -1;
+  // An explicit ?sort wins; otherwise upcoming lists soonest-first and the rest newest-first.
+  const direction = req.query.sort ? (req.query.sort === 'asc' ? 1 : -1) : req.query.scope === 'upcoming' ? 1 : -1;
   const [items, total] = await Promise.all([
     Appointment.find(filter)
       .select(admin ? '+staffNotes' : '')
@@ -382,7 +384,8 @@ export async function updateAppointment(req, res) {
       startTime: next.startTime,
       excludeId: appointment._id,
     });
-    appointment.set({ service: next.service, staff: next.staff, date: next.date, startTime: next.startTime, endTime });
+    // A new time gets its own reminder.
+    appointment.set({ service: next.service, staff: next.staff, date: next.date, startTime: next.startTime, endTime, reminderSentAt: null });
     // A client reschedule needs to be re-approved.
     if (rescheduled && !admin) next.status = 'pending';
   }
@@ -398,6 +401,16 @@ export async function updateAppointment(req, res) {
     appointment.set(previous);
     await appointment.save();
     throw slotTaken();
+  }
+
+  // Let the client know when the clinic (not the client) changed their booking. Fire-and-forget.
+  if (admin) {
+    const change = rescheduled
+      ? 'rescheduled'
+      : appointment.status !== before.status && ['confirmed', 'cancelled'].includes(appointment.status)
+        ? appointment.status
+        : null;
+    if (change) notifyClientOfChange(appointment._id, change);
   }
 
   if (admin) {

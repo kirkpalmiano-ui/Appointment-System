@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cliniquick/services/api.dart';
+import 'package:cliniquick/theme.dart';
 import 'package:cliniquick/utils/validation.dart';
+import 'package:cliniquick/widgets/auth/auth_frame.dart';
 import 'package:cliniquick/widgets/common.dart';
+import 'package:cliniquick/widgets/motion.dart';
 import 'package:cliniquick/widgets/resend_button.dart';
+import 'package:cliniquick/widgets/ui.dart';
 
 // Three steps on one screen: email -> 6-digit code -> new password.
 class ForgotPasswordState extends StatefulWidget {
@@ -105,65 +109,107 @@ class ForgotPasswordPage extends State<ForgotPasswordState> {
   }
 
   Widget button(String label, VoidCallback onPressed) {
-    return FilledButton(
-      onPressed: loading ? null : onPressed,
-      child: Padding(padding: const EdgeInsets.all(12), child: Text(loading ? "Please wait..." : label)),
-    );
+    return AuthSubmitButton(label: label, busy: loading, onPressed: onPressed);
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     final steps = ["Email", "Code", "New password"];
-    return Scaffold(
-      appBar: AppBar(title: const Text("Reset your password")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: 12,
-          children: [
-            Text("Step ${step + 1} of 3: ${steps[step]}", style: const TextStyle(fontWeight: FontWeight.bold)),
-            LinearProgressIndicator(value: (step + 1) / 3),
-            if (notice.isNotEmpty && serverError.isEmpty && step == 1) Text(notice, style: const TextStyle(color: Colors.green)),
-            if (serverError.isNotEmpty) errorBox(serverError),
-            if (step == 0) ...[
-              const Text("Enter your account's email and we'll send you a 6-digit code."),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder()),
-              ),
-              button("Send code", sendCode),
-            ],
-            if (step == 1) ...[
-              Text("Enter the code sent to $email. It expires in 10 minutes."),
-              TextField(
-                controller: codeController,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 28, letterSpacing: 12, fontWeight: FontWeight.bold),
-                decoration: const InputDecoration(hintText: "000000", border: OutlineInputBorder(), counterText: ""),
-              ),
-              button("Continue", checkCode),
-              ResendButton(onResend: resend),
-            ],
-            if (step == 2) ...[
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: "New password", border: OutlineInputBorder()),
-              ),
-              const Text("8 to 32 characters, with a letter and a number", style: TextStyle(color: Colors.black54, fontSize: 12)),
-              TextField(
-                controller: confirmController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: "Confirm new password", border: OutlineInputBorder()),
-              ),
-              button("Update password", savePassword),
-            ],
-          ],
+    final mutedStyle = TextStyle(fontSize: 15, height: 1.4, color: c.muted);
+    final Widget subtitle = switch (step) {
+      0 => Text("Enter your account's email and we'll send you a 6-digit code.", style: mutedStyle),
+      1 => Text.rich(
+          TextSpan(children: [
+            const TextSpan(text: "Enter the code sent to "),
+            TextSpan(text: email, style: TextStyle(fontWeight: FontWeight.w700, color: c.text)),
+            const TextSpan(text: ". It expires in 10 minutes."),
+          ]),
+          style: mutedStyle,
         ),
+      _ => Text("Choose a new password for your account.", style: mutedStyle),
+    };
+    return AuthFrame(
+      headline: "Forgot your password?",
+      lede: "No problem. We'll email you a code so you can set a new one.",
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Step indicator: "STEP 1 OF 3 · EMAIL" and a rounded progress bar.
+          Semantics(
+            label: "Step ${step + 1} of 3: ${steps[step]}",
+            excludeSemantics: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Eyebrow("Step ${step + 1} of 3 · ${steps[step]}"),
+                const SizedBox(height: 8),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(end: (step + 1) / 3),
+                  duration: reduceMotion(context) ? Duration.zero : const Duration(milliseconds: 350),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, _) => ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(value: value, minHeight: 6, color: c.primary, backgroundColor: c.border),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          AuthHeading("Reset your password", subtitleWidget: subtitle),
+          if (notice.isNotEmpty && serverError.isEmpty && step == 1) AuthMessage(notice, success: true),
+          if (serverError.isNotEmpty) AuthMessage(serverError),
+          if (step == 0) ...[
+            AuthField(
+              controller: emailController,
+              label: "Email",
+              hint: "you@example.com",
+              icon: Icons.mail_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.email],
+              onSubmitted: (_) {
+                if (!loading) sendCode();
+              },
+            ),
+            const SizedBox(height: 18),
+            button("Send code", sendCode),
+          ],
+          if (step == 1) ...[
+            AuthCodeField(controller: codeController),
+            const SizedBox(height: 16),
+            button("Continue", checkCode),
+            const SizedBox(height: 10),
+            Center(child: ResendButton(onResend: resend)),
+          ],
+          if (step == 2) ...[
+            AuthField(
+              controller: passwordController,
+              label: "New password",
+              icon: Icons.lock_outline_rounded,
+              password: true,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.newPassword],
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 6, 4, 16),
+              child: AuthHint("8 to 32 characters, with a letter and a number"),
+            ),
+            AuthField(
+              controller: confirmController,
+              label: "Confirm new password",
+              icon: Icons.lock_outline_rounded,
+              password: true,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) {
+                if (!loading) savePassword();
+              },
+            ),
+            const SizedBox(height: 18),
+            button("Update password", savePassword),
+          ],
+        ],
       ),
     );
   }

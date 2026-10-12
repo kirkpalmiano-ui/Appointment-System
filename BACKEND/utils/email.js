@@ -3,7 +3,7 @@ import ApiError from './ApiError.js';
 
 const BREVO_URL = 'https://api.brevo.com/v3/smtp/email';
 
-const escapeHtml = (s) =>
+export const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 // Sends an email through Brevo's HTTP API (not SMTP, which some hosts block).

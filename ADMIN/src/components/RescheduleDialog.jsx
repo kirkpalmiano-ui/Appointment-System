@@ -8,8 +8,10 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Skeleton from '@mui/material/Skeleton';
+import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import UserAvatar from './ui/UserAvatar';
 import api from '../api/axios';
 import { getErrorMessage } from '../utils/errors';
 import { addDays, formatDate, formatTime, formatTimeRange, todayString } from '../utils/format';
@@ -65,13 +67,20 @@ export default function RescheduleDialog({ appointment, onClose, onSaved }) {
 
   return (
     <Dialog open onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Reschedule appointment</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 800, letterSpacing: '-0.02em', pb: 1 }}>Reschedule appointment</DialogTitle>
       <DialogContent>
-        <Typography color="text.secondary" sx={{ mb: 2 }}>
-          {appointment.user?.name} · {appointment.service?.name} with {appointment.staff?.name}
-          <br />
-          Currently {formatDate(appointment.date)}, {formatTimeRange(appointment.startTime, appointment.endTime)}
-        </Typography>
+        {/* Who and when, as it stands now */}
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', p: 1.5, mb: 2.5, borderRadius: '14px', bgcolor: 'hover.main', border: 1, borderColor: 'divider' }}>
+          <UserAvatar id={appointment.user?._id} name={appointment.user?.name} unknown={!appointment.user} size={38} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 700 }} noWrap>
+              {appointment.user?.name} · {appointment.service?.name}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              with {appointment.staff?.name} · currently {formatDate(appointment.date)}, {formatTimeRange(appointment.startTime, appointment.endTime)}
+            </Typography>
+          </Box>
+        </Stack>
         {(!serviceId || !staffId) && <Alert severity="warning">The service or specialist was removed, so this appointment can't be rescheduled.</Alert>}
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -89,17 +98,26 @@ export default function RescheduleDialog({ appointment, onClose, onSaved }) {
           error={Boolean(dateError)}
           helperText={dateError}
           slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: today, max: lastDay } }}
-          sx={{ mb: 2, maxWidth: 240 }}
+          size="small"
+          sx={{ mb: 2.5, maxWidth: 240 }}
         />
-        {loading && <Skeleton variant="rounded" height={88} />}
+        {key && (
+          <Typography sx={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'text.secondary', mb: 1 }}>
+            Free times{!loading && available.length > 0 ? ` · ${available.length}` : ''}
+          </Typography>
+        )}
+        {loading && <Skeleton variant="rounded" height={88} sx={{ borderRadius: '14px' }} />}
         {!loading && key && available.length === 0 && <Alert severity="info">{slotsData.message || 'No free times on this day.'}</Alert>}
         {!loading && available.length > 0 && (
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 1 }}>
-            {available.map((s) => (
-              <Button key={s.startTime} variant={slot?.startTime === s.startTime ? 'contained' : 'outlined'} onClick={() => setSlot(s)}>
-                {formatTime(s.startTime)}
-              </Button>
-            ))}
+          <Box role="radiogroup" aria-label="Free times" sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 1 }}>
+            {available.map((s) => {
+              const on = slot?.startTime === s.startTime;
+              return (
+                <Button key={s.startTime} size="small" role="radio" aria-checked={on} variant={on ? 'contained' : 'outlined'} onClick={() => setSlot(s)} sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {formatTime(s.startTime)}
+                </Button>
+              );
+            })}
           </Box>
         )}
       </DialogContent>

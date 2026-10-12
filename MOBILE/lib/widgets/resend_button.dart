@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:cliniquick/theme.dart';
 
 // "Resend code" button that stays locked while a countdown runs.
 // `onResend` returns the number of seconds to wait before the next resend.
@@ -54,7 +55,7 @@ class ResendButtonPage extends State<ResendButton> {
     if (secondsLeft > 0) {
       final minutes = secondsLeft ~/ 60;
       final seconds = (secondsLeft % 60).toString().padLeft(2, "0");
-      return Text("Resend code in $minutes:$seconds", textAlign: TextAlign.center, style: const TextStyle(color: Colors.black54));
+      return Text("Resend code in $minutes:$seconds", textAlign: TextAlign.center, style: TextStyle(color: AppColors.of(context).muted));
     }
     return TextButton(onPressed: sending ? null : resend, child: Text(sending ? "Sending..." : "Resend code"));
   }

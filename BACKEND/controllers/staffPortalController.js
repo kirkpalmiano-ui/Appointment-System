@@ -2,6 +2,7 @@ import Appointment, { ACTIVE_STATUSES, STATUSES } from '../models/Appointment.js
 import TimeOff from '../models/TimeOff.js';
 import User from '../models/User.js';
 import ApiError from '../utils/ApiError.js';
+import { notifyClientOfChange } from '../utils/appointmentEmails.js';
 import { audit } from '../utils/audit.js';
 import { getPagination, paginated, searchRegex } from '../utils/query.js';
 import { addDays, isInPast, nowInBusinessTz } from '../utils/time.js';
@@ -116,6 +117,9 @@ export async function updateMyAppointment(req, res) {
   }
   if (staffNotes !== undefined) appointment.staffNotes = staffNotes;
   await appointment.save();
+
+  // Tell the client when their booking is confirmed (fire-and-forget; respects their email settings).
+  if (before !== appointment.status && appointment.status === 'confirmed') notifyClientOfChange(appointment._id, 'confirmed');
 
   if (before !== appointment.status) {
     await audit(req, `staff.appointment_${appointment.status}`, {

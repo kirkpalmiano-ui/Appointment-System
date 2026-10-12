@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cliniquick/services/api.dart';
 import 'package:cliniquick/tempstore/activesession.dart';
+import 'package:cliniquick/theme.dart';
 import 'package:cliniquick/utils/validation.dart';
+import 'package:cliniquick/widgets/auth/auth_frame.dart';
 import 'package:cliniquick/widgets/common.dart';
 import 'package:cliniquick/widgets/resend_button.dart';
+import 'package:cliniquick/widgets/ui.dart';
 
 // Enter the 6-digit code sent to the email after signing up.
 class VerifyEmailState extends StatefulWidget {
@@ -24,7 +27,10 @@ class VerifyEmailPage extends State<VerifyEmailState> {
     super.dispose();
   }
 
-  String get email => ModalRoute.of(context)!.settings.arguments as String;
+  // Passed by the login / sign-up screen. Missing when the page is opened directly
+  // (e.g. the web app restarted on #/verify-email), which is handled in build().
+  String? get emailArg => ModalRoute.of(context)?.settings.arguments as String?;
+  String get email => emailArg ?? "";
 
   Future<void> verify() async {
     final codeError = validateCode(codeController.text);
@@ -71,38 +77,51 @@ class VerifyEmailPage extends State<VerifyEmailState> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Check your email")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: 12,
-          children: [
-            const Icon(Icons.mark_email_read_outlined, size: 56, color: Colors.deepPurple),
-            Text("We sent a 6-digit code to $email. It expires in 10 minutes.", textAlign: TextAlign.center),
-            if (notice.isNotEmpty && serverError.isEmpty) Text(notice, textAlign: TextAlign.center, style: const TextStyle(color: Colors.green)),
-            if (serverError.isNotEmpty) errorBox(serverError),
-            TextField(
-              controller: codeController,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 28, letterSpacing: 12, fontWeight: FontWeight.bold),
-              decoration: const InputDecoration(hintText: "000000", border: OutlineInputBorder(), counterText: ""),
-              onChanged: (value) {
-                // Submit automatically once all 6 digits are typed.
-                if (value.length == 6 && !loading) verify();
-              },
+    final c = AppColors.of(context);
+    // No email to verify: go back to the login screen instead of crashing.
+    if (emailArg == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.pushNamedAndRemoveUntil(context, "/login", (route) => false);
+      });
+      return const Scaffold(body: SizedBox.shrink());
+    }
+    return AuthFrame(
+      headline: "One last step.",
+      lede: "Enter the 6-digit code we emailed you to confirm your account.",
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 14),
+            child: Align(alignment: Alignment.centerLeft, child: IconTile(Icons.mark_email_read_outlined, size: 48)),
+          ),
+          AuthHeading(
+            "Check your email",
+            subtitleWidget: Text.rich(
+              TextSpan(children: [
+                const TextSpan(text: "We sent a 6-digit code to "),
+                TextSpan(text: email, style: TextStyle(fontWeight: FontWeight.w700, color: c.text)),
+                const TextSpan(text: ". It expires in 10 minutes."),
+              ]),
+              style: TextStyle(fontSize: 15, height: 1.4, color: c.muted),
             ),
-            FilledButton(
-              onPressed: loading ? null : verify,
-              child: Padding(padding: const EdgeInsets.all(12), child: Text(loading ? "Verifying..." : "Verify email")),
-            ),
-            ResendButton(onResend: resend),
-            const Text("Check your spam folder too.", textAlign: TextAlign.center, style: TextStyle(color: Colors.black54, fontSize: 12)),
-          ],
-        ),
+          ),
+          if (notice.isNotEmpty && serverError.isEmpty) AuthMessage(notice, success: true),
+          if (serverError.isNotEmpty) AuthMessage(serverError),
+          AuthCodeField(
+            controller: codeController,
+            onChanged: (value) {
+              // Submit automatically once all 6 digits are typed.
+              if (value.length == 6 && !loading) verify();
+            },
+          ),
+          const SizedBox(height: 16),
+          AuthSubmitButton(label: "Verify email", busyLabel: "Verifying...", busy: loading, onPressed: verify),
+          const SizedBox(height: 10),
+          Center(child: ResendButton(onResend: resend)),
+          const SizedBox(height: 6),
+          const AuthHint("Check your spam folder too.", align: TextAlign.center),
+        ],
       ),
     );
   }

@@ -5,6 +5,7 @@ import ToastProvider from './context/ToastProvider';
 import GuestRoute from './components/GuestRoute';
 import PageLoader from './components/PageLoader';
 import ProtectedRoute from './components/ProtectedRoute';
+import ScrollProgressVar from './components/ScrollProgressVar';
 import AuthLayout from './layouts/AuthLayout';
 import MainLayout from './layouts/MainLayout';
 import { CLIENT_ROLES } from './utils/roles';
@@ -33,6 +34,7 @@ function RescheduleRoute() {
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollProgressVar />
       <AuthProvider>
         <ToastProvider>
           <Suspense fallback={<PageLoader />}>
