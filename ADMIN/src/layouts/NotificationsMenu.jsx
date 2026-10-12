@@ -3,6 +3,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import Badge from '@mui/material/Badge';
 import Box from '@mui/material/Box';
 import MenuItem from '@mui/material/MenuItem';
+import MenuList from '@mui/material/MenuList';
 import Popover from '@mui/material/Popover';
 import Typography from '@mui/material/Typography';
 import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded';
@@ -60,7 +61,9 @@ export default function NotificationsMenu({ pending, failedSignIns, failedLatest
             You&apos;re all caught up. 🎉
           </Typography>
         ) : (
-          items.map((n) => (
+          // MUI requires MenuItems to sit inside a MenuList (or Menu).
+          <MenuList disablePadding>
+          {items.map((n) => (
             <MenuItem key={n.to} component={RouterLink} to={n.to} onClick={() => setAnchor(null)} sx={{ gap: 1.5, py: 1.25, alignItems: 'flex-start', whiteSpace: 'normal' }}>
               <IconTile icon={n.icon} tone={n.tone} size={34} />
               <Box sx={{ minWidth: 0 }}>
@@ -72,7 +75,8 @@ export default function NotificationsMenu({ pending, failedSignIns, failedLatest
                 )}
               </Box>
             </MenuItem>
-          ))
+          ))}
+          </MenuList>
         )}
       </Popover>
     </>
