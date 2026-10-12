@@ -36,7 +36,7 @@ export default function TimeOffLauncher({ staff = [], onPick }) {
             }}
             sx={{ gap: 1.25, minWidth: 220 }}
           >
-            <UserAvatar id={m._id} name={m.name} size={26} />
+            <UserAvatar id={m._id} name={m.name} src={m.photoUrl} size={26} />
             {m.name}
           </MenuItem>
         ))}

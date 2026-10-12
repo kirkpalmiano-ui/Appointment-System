@@ -68,6 +68,9 @@ async function assertScheduleKeepsBookings(staff, data) {
   }
 }
 
+// Fields of the linked login account: the photo for everyone, portal state for the admin panel.
+const USER_FIELDS_ADMIN = 'isVerified lastLoginAt avatarUrl';
+
 // Portal access state for the admin panel: none | invited | active.
 function portalStatus(staff) {
   if (!staff.user) return 'none';
@@ -75,8 +78,9 @@ function portalStatus(staff) {
 }
 
 // Admin view: full record plus portal status. Public view: no email, no account link.
+// `photoUrl` is the profile photo the staff member uploaded on their own account ('' = initials).
 function present(staff, admin) {
-  const json = staff.toJSON();
+  const json = { ...staff.toJSON(), photoUrl: staff.user?.avatarUrl ?? '' };
   if (admin) {
     return {
       ...json,
@@ -100,7 +104,7 @@ export async function listStaff(req, res) {
   if (regex) filter.$or = [{ name: regex }, { specialization: regex }];
 
   let query = Staff.find(filter).populate('services', SERVICE_FIELDS).sort({ name: 1 }).skip(pageInfo.skip).limit(pageInfo.limit);
-  if (admin) query = query.populate('user', 'isVerified lastLoginAt');
+  query = query.populate('user', admin ? USER_FIELDS_ADMIN : 'avatarUrl');
   const [items, total] = await Promise.all([query, Staff.countDocuments(filter)]);
 
   res.json(paginated(items.map((s) => present(s, admin)), total, pageInfo));
@@ -110,7 +114,7 @@ export async function listStaff(req, res) {
 export async function getStaff(req, res) {
   const admin = isAdminRequest(req);
   let query = Staff.findById(req.params.id).populate('services', SERVICE_FIELDS);
-  if (admin) query = query.populate('user', 'isVerified lastLoginAt');
+  query = query.populate('user', admin ? USER_FIELDS_ADMIN : 'avatarUrl');
   const staff = await query;
   // Inactive staff are hidden from everyone but the admin panel.
   if (!staff || (!staff.isActive && !admin)) throw new ApiError(404, 'Staff member not found.');
@@ -157,7 +161,7 @@ export async function updateStaff(req, res) {
   await staff.save();
 
   await audit(req, 'staff.update', { targetType: 'staff', targetId: staff._id, summary: `Updated "${staff.name}"` });
-  await staff.populate([{ path: 'services', select: SERVICE_FIELDS }, { path: 'user', select: 'isVerified lastLoginAt' }]);
+  await staff.populate([{ path: 'services', select: SERVICE_FIELDS }, { path: 'user', select: USER_FIELDS_ADMIN }]);
   res.json({ staff: present(staff, true) });
 }
 

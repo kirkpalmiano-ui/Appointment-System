@@ -25,6 +25,8 @@ class StaffCard extends StatelessWidget {
     final c = AppColors.of(context);
     final name = (staff["name"] ?? "").toString();
     final specialization = (staff["specialization"] ?? "").toString();
+    // Profile photo the specialist uploaded on their account (initials if none).
+    final photoUrl = (staff["photoUrl"] ?? "").toString();
 
     if (compact) {
       return SelectableCard(
@@ -33,7 +35,7 @@ class StaffCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
-            InitialsAvatar(name, size: 40),
+            InitialsAvatar(name, size: 40, imageUrl: photoUrl),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -72,7 +74,7 @@ class StaffCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              InitialsAvatar(name, size: 56),
+              InitialsAvatar(name, size: 56, imageUrl: photoUrl),
               const Spacer(),
               SelectCircle(selected: selected),
             ],

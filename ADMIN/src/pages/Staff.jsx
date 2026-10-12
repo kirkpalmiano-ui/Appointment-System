@@ -344,7 +344,7 @@ function NameBlock({ member, size = 44 }) {
   const subtitle = [member.specialization || 'No specialization', member.email].filter(Boolean).join(' · ');
   return (
     <Stack direction="row" spacing={1.5} sx={[{ alignItems: 'center', minWidth: 0 }, dimSx(member)]}>
-      <UserAvatar id={member._id} name={member.name} size={size} />
+      <UserAvatar id={member._id} name={member.name} src={member.photoUrl} size={size} />
       <Box sx={{ minWidth: 0 }}>
         <Typography sx={{ fontWeight: 700, fontSize: 15, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
           {member.name}
