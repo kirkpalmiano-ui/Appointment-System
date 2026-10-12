@@ -30,7 +30,8 @@ export const tokenStore = {
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-  timeout: 20000,
+  // Render's free plan can take ~50s to wake up after being idle.
+  timeout: 60000,
 });
 
 api.interceptors.request.use((config) => {
