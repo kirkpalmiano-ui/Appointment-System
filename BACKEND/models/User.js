@@ -26,6 +26,12 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, trim: true, maxlength: 20, default: '' },
     phoneCountry: { type: String, trim: true, uppercase: true, maxlength: 2, default: '' },
     role: { type: String, enum: ROLES, default: 'client' },
+    // Which optional emails the user wants (Profile → Appointment reminders).
+    notificationPrefs: {
+      emailReminders: { type: Boolean, default: true }, // ~24h before each visit
+      statusUpdates: { type: Boolean, default: true }, // clinic confirms, cancels or reschedules
+      healthTips: { type: Boolean, default: false }, // opt-in only; nothing is sent yet
+    },
     // Self-registered accounts start unverified (set explicitly in register) and
     // must confirm an emailed OTP. Defaults to true so accounts created by the
     // seed script or before this field existed keep working.

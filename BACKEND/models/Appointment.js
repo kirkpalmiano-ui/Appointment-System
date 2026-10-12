@@ -22,12 +22,16 @@ const appointmentSchema = new mongoose.Schema(
     // A client "removed this from my history". The record is kept for staff and
     // admins (it's part of the business history); only the client stops seeing it.
     hiddenForClient: { type: Boolean, default: false },
+    // When the ~24h reminder email was claimed/sent (cleared on reschedule so the new time gets one).
+    reminderSentAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
 appointmentSchema.index({ staff: 1, date: 1, status: 1 });
 appointmentSchema.index({ user: 1, date: -1 });
+// The reminder job looks up upcoming active visits that haven't had a reminder.
+appointmentSchema.index({ status: 1, reminderSentAt: 1, date: 1 });
 
 appointmentSchema.set('toJSON', {
   transform: (_doc, ret) => {
