@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cliniquick/services/api.dart';
+import 'package:cliniquick/theme.dart';
 import 'package:cliniquick/utils/validation.dart';
+import 'package:cliniquick/widgets/auth/auth_frame.dart';
 import 'package:cliniquick/widgets/common.dart';
 
 // Sign-up screen. A 6-digit code is emailed; the account is verified on the next screen.
@@ -74,65 +76,83 @@ class RegisterPage extends State<RegisterState> {
     }
   }
 
-  Widget field(String key, String label, TextEditingController controller, {bool password = false, TextInputType? type}) {
-    return TextField(
+  Widget field(String key, String label, TextEditingController controller,
+      {bool password = false, TextInputType? type, IconData? icon, String? hint, Iterable<String>? autofill}) {
+    return AuthField(
       controller: controller,
-      obscureText: password,
+      label: label,
+      hint: hint,
+      icon: icon,
+      error: errors[key],
+      password: password,
       keyboardType: type,
-      decoration: InputDecoration(labelText: label, errorText: errors[key], border: const OutlineInputBorder()),
+      textInputAction: TextInputAction.next,
+      autofillHints: autofill,
     );
+  }
+
+  void goToLogin() {
+    // Usually opened from the login screen; otherwise open it fresh.
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      Navigator.pushReplacementNamed(context, "/login");
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Create your account")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+    final c = AppColors.of(context);
+    return AuthFrame(
+      headline: "Book visits without the phone calls.",
+      lede: "Sign up to book visits, get confirmations and manage every appointment in one place.",
+      child: AutofillGroup(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: 12,
+          spacing: 16,
           children: [
-            if (serverError.isNotEmpty) errorBox(serverError),
-            field("firstName", "First name", firstNameController),
-            field("lastName", "Last name", lastNameController),
-            field("email", "Email", emailController, type: TextInputType.emailAddress),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 8,
-              children: [
-                SizedBox(
-                  width: 120,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: phoneCountry,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: "Country", border: OutlineInputBorder()),
-                    items: [
-                      for (final country in phoneCountries)
-                        DropdownMenuItem(value: country[0], child: Text(country[1], overflow: TextOverflow.ellipsis)),
-                    ],
-                    onChanged: (value) => setState(() => phoneCountry = value ?? "PH"),
-                  ),
+            const AuthHeading("Create your account", subtitle: "It only takes a minute to start booking."),
+            if (serverError.isNotEmpty) AuthMessage(serverError),
+            field("firstName", "First name", firstNameController, icon: Icons.person_outline_rounded, autofill: const [AutofillHints.givenName]),
+            field("lastName", "Last name", lastNameController, icon: Icons.person_outline_rounded, autofill: const [AutofillHints.familyName]),
+            field("email", "Email", emailController,
+                type: TextInputType.emailAddress, icon: Icons.mail_outline_rounded, hint: "you@example.com", autofill: const [AutofillHints.email]),
+            ScrollIntoViewOnFocus(
+              child: DropdownButtonFormField<String>(
+                initialValue: phoneCountry,
+                isExpanded: true,
+                style: TextStyle(fontSize: 16, color: c.text),
+                dropdownColor: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(14),
+                decoration: InputDecoration(
+                  labelText: "Phone country",
+                  prefixIcon: Icon(Icons.public_rounded, size: 20, color: c.muted),
                 ),
-                Expanded(child: field("phone", "Phone (optional)", phoneController, type: TextInputType.phone)),
-              ],
-            ),
-            field("password", "Password", passwordController, password: true),
-            const Text("8 to 32 characters, with a letter and a number", style: TextStyle(color: Colors.black54, fontSize: 12)),
-            field("confirm", "Confirm password", confirmController, password: true),
-            FilledButton(
-              onPressed: loading ? null : createNewAcc,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: loading
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text("Create account"),
+                items: [
+                  for (final country in phoneCountries)
+                    DropdownMenuItem(value: country[0], child: Text(country[1], overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: (value) => setState(() => phoneCountry = value ?? "PH"),
               ),
             ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Already have an account? Log in"),
+            field("phone", "Phone (optional)", phoneController,
+                type: TextInputType.phone, icon: Icons.phone_outlined, autofill: const [AutofillHints.telephoneNumber]),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 6,
+              children: [
+                field("password", "Password", passwordController,
+                    password: true, icon: Icons.lock_outline_rounded, autofill: const [AutofillHints.newPassword]),
+                const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: AuthHint("8 to 32 characters, with a letter and a number"),
+                ),
+              ],
             ),
+            field("confirm", "Confirm password", confirmController, password: true, icon: Icons.lock_outline_rounded),
+            const SizedBox(height: 2),
+            AuthSubmitButton(label: "Create account", busyLabel: "Creating account...", busy: loading, onPressed: createNewAcc, arrow: true),
+            AuthLinkLine(prompt: "Already have an account?", label: "Log in", onTap: goToLogin),
           ],
         ),
       ),

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cliniquick/services/api.dart';
+import 'package:cliniquick/theme.dart';
 import 'package:cliniquick/utils/format.dart';
 import 'package:cliniquick/widgets/common.dart';
+import 'package:cliniquick/widgets/motion.dart';
+import 'package:cliniquick/widgets/ui.dart';
 
 // Staff time off: upcoming days or hours when clients can't book them.
 class StaffTimeOffState extends StatefulWidget {
@@ -55,46 +58,140 @@ class StaffTimeOffPage extends State<StaffTimeOffState> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Time Off")),
-      drawer: const AppDrawer(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: addTimeOff,
-        icon: const Icon(Icons.add),
-        label: const Text("Add time off"),
-      ),
+    final c = AppColors.of(context);
+    return AppScaffold(
+      tab: AppTab.timeOff,
       body: RefreshIndicator(
         onRefresh: loadTimeOff,
+        color: c.primary,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(18, 18, 18, tabBarSpace(context)),
           children: [
-            const Text("Clients can't book you during these times. Existing appointments are not cancelled automatically.",
-                style: TextStyle(color: Colors.black54)),
-            const SizedBox(height: 12),
-            if (error.isNotEmpty) errorBox(error),
+            const PageTitle(
+              "Time off.",
+              subtitle: "Clients can't book you during these times. Existing appointments are not cancelled automatically.",
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: addTimeOff,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text("Add time off"),
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (error.isNotEmpty) _ErrorBanner(error),
             if (loading)
-              const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))
+              Padding(padding: const EdgeInsets.all(40), child: Center(child: CircularProgressIndicator(color: c.primary)))
             else if (items.isEmpty)
-              emptyState(Icons.beach_access, "No upcoming time off", "Tap Add time off to block a day or a few hours.")
-            else
-              for (final entry in items)
-                Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    leading: const Icon(Icons.beach_access, color: Colors.amber),
-                    title: Text(formatDate(entry["date"]), style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text([
-                      entry["allDay"] == true ? "All day" : formatTimeRange(entry["startTime"], entry["endTime"]),
-                      if ((entry["reason"] ?? "").isNotEmpty) entry["reason"],
-                    ].join(" • ")),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: "Remove",
-                      onPressed: () => removeTimeOff(entry),
-                    ),
+              FrostedCard(
+                padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+                child: Column(
+                  children: [
+                    IconTile(Icons.beach_access_rounded, size: 52, bg: c.pendingBg, fg: c.pendingText),
+                    const SizedBox(height: 12),
+                    Text("No upcoming time off", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.text)),
+                    const SizedBox(height: 4),
+                    Text("Tap Add time off to block a day or a few hours.", textAlign: TextAlign.center, style: TextStyle(color: c.muted)),
+                  ],
+                ),
+              )
+            else ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                child: Eyebrow("Upcoming · ${items.length}"),
+              ),
+              for (var i = 0; i < items.length; i++)
+                FadeSlideIn(
+                  delay: Duration(milliseconds: 40 * (i < 6 ? i : 6)),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _TimeOffCard(entry: items[i], onRemove: () => removeTimeOff(items[i])),
                   ),
                 ),
-            const SizedBox(height: 60),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// One time-off entry: date square, day, hours or "All day", private reason, remove button.
+class _TimeOffCard extends StatelessWidget {
+  final Map entry;
+  final VoidCallback onRemove;
+  const _TimeOffCard({required this.entry, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final allDay = entry["allDay"] == true;
+    final reason = (entry["reason"] ?? "").toString();
+    return FrostedCard(
+      padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+      child: Row(
+        children: [
+          DateBox(entry["date"]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(formatDate(entry["date"]), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: c.text)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    SoftChip(allDay ? "All day" : formatTimeRange(entry["startTime"], entry["endTime"]), tone: ChipTone.pending),
+                  ],
+                ),
+                if (reason.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(reason, style: TextStyle(fontSize: 13, color: c.muted)),
+                ],
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.delete_outline_rounded, color: c.danger),
+            tooltip: "Remove",
+            onPressed: onRemove,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Server error message in the soft danger colours.
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+  const _ErrorBanner(this.message);
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: c.danger.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: c.danger.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.error_outline_rounded, size: 20, color: c.danger),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message, style: TextStyle(color: c.danger, fontWeight: FontWeight.w600))),
           ],
         ),
       ),
@@ -180,22 +277,24 @@ class AddTimeOffDialogPage extends State<AddTimeOffDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return AlertDialog(
-      title: const Text("Add time off"),
+      title: Text("Add time off", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.6, color: c.text)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (error.isNotEmpty) errorBox(error),
+            if (error.isNotEmpty) _ErrorBanner(error),
             OutlinedButton.icon(
               onPressed: pickDate,
-              icon: const Icon(Icons.calendar_today),
+              icon: Icon(Icons.calendar_today_outlined, size: 18, color: c.primary),
               label: Text(date.isEmpty ? "Choose a date" : formatDate(date)),
             ),
+            const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text("All day"),
+              title: Text("All day", style: TextStyle(fontWeight: FontWeight.w600, color: c.text)),
               value: allDay,
               onChanged: (value) => setState(() => allDay = value),
             ),
@@ -207,18 +306,23 @@ class AddTimeOffDialogPage extends State<AddTimeOffDialog> {
                   Expanded(child: OutlinedButton(onPressed: () => pickTime(false), child: Text("To ${formatTime(hhmm(endTime))}"))),
                 ],
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TextField(
               controller: reasonController,
               maxLength: 100,
-              decoration: const InputDecoration(labelText: "Reason (optional, private)", border: OutlineInputBorder()),
+              style: TextStyle(fontSize: 16, color: c.text),
+              decoration: const InputDecoration(labelText: "Reason (optional, private)"),
             ),
           ],
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-        FilledButton(onPressed: saving ? null : save, child: Text(saving ? "Saving..." : "Add")),
+        FilledButton(
+          style: FilledButton.styleFrom(minimumSize: const Size(88, 44)),
+          onPressed: saving ? null : save,
+          child: Text(saving ? "Saving..." : "Add"),
+        ),
       ],
     );
   }
