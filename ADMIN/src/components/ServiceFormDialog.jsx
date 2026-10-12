@@ -13,7 +13,9 @@ import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import api from '../api/axios';
+import ServiceTile from './services/ServiceTile';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
 import { formatDuration } from '../utils/format';
 import { LIMITS, validatePrice, validateServiceName } from '../utils/validation';
@@ -73,7 +75,17 @@ export default function ServiceFormDialog({ service, onClose, onSaved }) {
   return (
     <Dialog open onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
       <Box component="form" noValidate onSubmit={submit}>
-        <DialogTitle>{editing ? 'Edit service' : 'Add service'}</DialogTitle>
+        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
+          {editing && <ServiceTile id={service._id} size={40} />}
+          <Box sx={{ minWidth: 0 }}>
+            <Typography component="h2" sx={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.02em' }}>
+              {editing ? 'Edit service' : 'Add service'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {editing ? service.name : 'What clients book, how long it takes and what it costs.'}
+            </Typography>
+          </Box>
+        </DialogTitle>
         <DialogContent>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -116,14 +128,17 @@ export default function ServiceFormDialog({ service, onClose, onSaved }) {
                 }}
               />
             </Stack>
-            <FormControlLabel
-              control={<Switch checked={form.isActive} onChange={(e) => set('isActive', e.target.checked)} />}
-              label={form.isActive ? 'Active: clients can book this service' : 'Inactive: hidden from clients'}
-            />
+            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '14px', bgcolor: 'hover.main', px: 2, py: 1 }}>
+              <FormControlLabel
+                control={<Switch checked={form.isActive} onChange={(e) => set('isActive', e.target.checked)} />}
+                label={form.isActive ? 'Active: clients can book this service' : 'Inactive: hidden from clients'}
+                slotProps={{ typography: { sx: { fontSize: 14, fontWeight: 600 } } }}
+              />
+            </Box>
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={onClose} color="inherit" disabled={busy}>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={onClose} variant="outlined" disabled={busy}>
             Cancel
           </Button>
           <Button type="submit" variant="contained" disabled={busy} startIcon={busy ? <CircularProgress size={16} color="inherit" /> : undefined}>

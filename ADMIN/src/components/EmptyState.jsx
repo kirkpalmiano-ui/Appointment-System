@@ -11,15 +11,15 @@ export default function EmptyState({ icon: Icon = EventBusyRoundedIcon, title, d
           placeItems: 'center',
           width: 56,
           height: 56,
-          borderRadius: 3,
+          borderRadius: '16px',
           mb: 2,
-          color: 'primary.main',
-          bgcolor: (theme) => `rgba(${theme.vars.palette.primary.mainChannel} / 0.1)`,
+          color: 'accent.contrastText',
+          bgcolor: 'accent.main',
         }}
       >
         <Icon />
       </Box>
-      <Typography variant="h6" gutterBottom>
+      <Typography variant="h6" gutterBottom sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
         {title}
       </Typography>
       {description && (

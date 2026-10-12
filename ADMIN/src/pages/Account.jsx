@@ -1,47 +1,66 @@
 import { useState } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import AlternateEmailRoundedIcon from '@mui/icons-material/AlternateEmailRounded';
+import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import api from '../api/axios';
 import ChangeEmailDialog from '../components/ChangeEmailDialog';
 import PageHeader from '../components/PageHeader';
 import PasswordField from '../components/PasswordField';
 import SubmitButton from '../components/SubmitButton';
+import PasswordStrength from '../components/account/PasswordStrength';
+import SecurityOverview from '../components/account/SecurityOverview';
+import SessionCard from '../components/account/SessionCard';
+import { validateAdminPassword } from '../components/account/passwordRules';
+import useMyAuditEvents from '../components/account/useMyAuditEvents';
+import RoleChip from '../components/ui/RoleChip';
+import SectionCard from '../components/ui/SectionCard';
+import SoftChip from '../components/ui/SoftChip';
+import UserAvatar from '../components/ui/UserAvatar';
 import useAuth from '../hooks/useAuth';
 import useToast from '../hooks/useToast';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
-import { initials } from '../utils/format';
+import { SESSION_SECONDS } from '../utils/session';
 
 const EMPTY = { currentPassword: '', newPassword: '', confirmPassword: '' };
 
-// Admin password rules are stricter than for clients.
-function validateAdminPassword(password) {
-  if (password.length < 12) return 'Admin passwords must be at least 12 characters.';
-  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password)) return 'Use both upper- and lowercase letters.';
-  if (!/\d/.test(password)) return 'Include at least one number.';
-  if (!/[^A-Za-z0-9]/.test(password)) return 'Include at least one symbol.';
-  return '';
-}
+const BANNER_LIGHT = 'linear-gradient(110deg,#6d63f0,#a78bfa 45%,#f9a8d4 75%,#fde68a)';
+const BANNER_DARK = 'linear-gradient(110deg,#312e81,#5b21b6 45%,#831843 80%,#78350f)';
 
 export default function Account() {
-  const { user, completeSession, sessionEndsAt, updateUser } = useAuth();
+  const { user, completeSession, sessionEndsAt, updateUser, logout } = useAuth();
+  const { counts } = useOutletContext() ?? {};
+  const navigate = useNavigate();
   const [emailDialog, setEmailDialog] = useState(false);
   const showToast = useToast();
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [auditTick, setAuditTick] = useState(0);
+  const { signIn, passwordChange } = useMyAuditEvents(user.email, { refresh: auditTick });
+
+  // The newest audited sign-in started this session if it happened when this token was issued.
+  // (A password change re-issues the token, so after one this simply stays off.)
+  const sessionStart = sessionEndsAt ? sessionEndsAt - SESSION_SECONDS * 1000 : null;
+  const thisDevice = Boolean(signIn && sessionStart && Math.abs(new Date(signIn.createdAt).getTime() - sessionStart) < 2 * 60 * 1000);
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setErrors((prev) => ({ ...prev, [e.target.name]: '' }));
   };
+
+  const mismatch = Boolean(form.confirmPassword) && form.confirmPassword !== form.newPassword;
+  const canSubmit = Boolean(form.currentPassword) && !validateAdminPassword(form.newPassword) && form.confirmPassword === form.newPassword;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -61,6 +80,7 @@ export default function Account() {
       // The server ended every other session and gave this one a new admin token.
       completeSession(data.token, data.user);
       setForm(EMPTY);
+      setAuditTick((n) => n + 1);
       showToast('Password changed. All other sessions were signed out.');
     } catch (err) {
       const message = getErrorMessage(err);
@@ -71,72 +91,128 @@ export default function Account() {
     }
   };
 
+  const signOut = async () => {
+    setSigningOut(true);
+    await logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <>
       <PageHeader title="My account" description="Your administrator profile and security." />
+
+      {/* Profile */}
+      <Card sx={{ mb: 3 }}>
+        <Box
+          aria-hidden
+          sx={(theme) => ({ height: { xs: 96, sm: 120 }, background: BANNER_LIGHT, ...theme.applyStyles('dark', { background: BANNER_DARK }) })}
+        />
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={{ xs: 1.5, sm: 2.5 }}
+          sx={{ px: { xs: 2.5, sm: 3 }, pb: 3, alignItems: { sm: 'flex-end' } }}
+        >
+          <UserAvatar
+            id={user._id}
+            name={user.name}
+            size={84}
+            sx={{ mt: '-42px', fontSize: 30, boxShadow: (t) => `0 0 0 4px ${t.vars.palette.background.paper}, 0 12px 24px -12px rgba(15, 23, 42, 0.35)` }}
+          />
+          <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+            <Typography component="h2" sx={{ fontWeight: 800, fontSize: 22, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              {user.name}
+            </Typography>
+            <Typography color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              {user.email}
+            </Typography>
+            <Stack direction="row" spacing={0.75} useFlexGap sx={{ mt: 1.25, flexWrap: 'wrap' }}>
+              <RoleChip role="admin" />
+              {/* Admin panel sign-in always asks for an emailed code after the password (adminAuthController). */}
+              <SoftChip tone="success" icon={<CheckRoundedIcon />}>
+                2-step sign-in on
+              </SoftChip>
+            </Stack>
+          </Box>
+          <Button variant="outlined" startIcon={<AlternateEmailRoundedIcon />} onClick={() => setEmailDialog(true)} sx={{ alignSelf: { xs: 'flex-start', sm: 'flex-end' } }}>
+            Change email
+          </Button>
+        </Stack>
+      </Card>
+
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Card>
-            <CardContent sx={{ p: 3 }}>
-              <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mb: 3 }}>
-                <Avatar sx={{ width: 56, height: 56, bgcolor: 'secondary.main' }}>{initials(user.name)}</Avatar>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="h6">{user.name}</Typography>
-                  <Typography color="text.secondary" sx={{ wordBreak: 'break-all' }}>
-                    {user.email}
-                  </Typography>
-                </Box>
-              </Stack>
-              <Stack spacing={1.5}>
-                <Typography variant="body2">
-                  <strong>Sign-in protection:</strong> password + emailed code
-                </Typography>
-                <Typography variant="body2">
-                  <strong>This session ends:</strong>{' '}
-                  {sessionEndsAt ? new Date(sessionEndsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'} (or after
-                  15 minutes idle)
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Last sign-in:</strong> {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('en-US') : '—'}
-                </Typography>
-              </Stack>
-              <Button variant="outlined" onClick={() => setEmailDialog(true)} sx={{ mt: 3 }}>
-                Change email
-              </Button>
-              <Alert severity="info" sx={{ mt: 2 }}>
-                To change your name or phone number, use the client app&apos;s profile page. Your email can only be changed here, and the new address must be confirmed with a code.
-              </Alert>
-            </CardContent>
-          </Card>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Stack spacing={3}>
+            <SessionCard sessionEndsAt={sessionEndsAt} onSignOut={signOut} signingOut={signingOut} />
+            <SecurityOverview
+              signIn={signIn}
+              thisDevice={thisDevice}
+              fallbackLastLogin={user.lastLoginAt}
+              passwordChange={passwordChange}
+              failed={counts?.failedSignIns}
+            />
+          </Stack>
         </Grid>
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Card>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h6" component="h2">
-                Change password
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Admin passwords need 12 to 32 characters with upper- and lowercase letters, a number and a symbol.
-              </Typography>
-              {error && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  {error}
-                </Alert>
-              )}
-              <Box component="form" noValidate onSubmit={submit}>
-                <Stack spacing={2.5}>
-                  <PasswordField label="Current password" name="currentPassword" value={form.currentPassword} onChange={handleChange} error={errors.currentPassword} />
-                  <PasswordField label="New password" name="newPassword" autoComplete="new-password" value={form.newPassword} onChange={handleChange} error={errors.newPassword} />
-                  <PasswordField label="Confirm new password" name="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={handleChange} error={errors.confirmPassword} />
-                  <Box>
-                    <SubmitButton busy={busy} busyText="Updating..." fullWidth={false} size="medium">
-                      Update password
-                    </SubmitButton>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <SectionCard title="Change password">
+            <Typography variant="body2" color="text.secondary" sx={{ mt: -1, mb: 2.5 }}>
+              Changing it signs you out on every other device.
+            </Typography>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+            <Box component="form" noValidate onSubmit={submit}>
+              <Stack spacing={2.25}>
+                <PasswordField
+                  label="Current password"
+                  name="currentPassword"
+                  startIcon={<LockOutlinedIcon />}
+                  value={form.currentPassword}
+                  onChange={handleChange}
+                  error={errors.currentPassword}
+                />
+                <Box>
+                  <PasswordField
+                    label="New password"
+                    name="newPassword"
+                    autoComplete="new-password"
+                    startIcon={<LockOutlinedIcon />}
+                    value={form.newPassword}
+                    onChange={handleChange}
+                    error={errors.newPassword}
+                  />
+                  <Box sx={{ mt: 1.5 }}>
+                    <PasswordStrength password={form.newPassword} />
                   </Box>
-                </Stack>
-              </Box>
-            </CardContent>
-          </Card>
+                </Box>
+                <PasswordField
+                  label="Confirm new password"
+                  name="confirmPassword"
+                  autoComplete="new-password"
+                  startIcon={<LockOutlinedIcon />}
+                  value={form.confirmPassword}
+                  onChange={handleChange}
+                  error={errors.confirmPassword || (mismatch ? 'Passwords do not match.' : '')}
+                />
+                <SubmitButton busy={busy} busyText="Updating..." disabled={!canSubmit}>
+                  Update password
+                </SubmitButton>
+              </Stack>
+            </Box>
+
+            <Stack
+              direction="row"
+              spacing={1.25}
+              sx={{ mt: 2.5, p: 1.75, borderRadius: '14px', bgcolor: 'infoChip.light', color: 'infoChip.main', alignItems: 'flex-start' }}
+            >
+              <InfoOutlinedIcon sx={{ fontSize: 18, mt: '2px' }} />
+              <Typography variant="body2" sx={{ color: 'inherit', fontWeight: 500 }}>
+                Name and phone are edited in the client app&apos;s profile. Email can only be changed here and must be confirmed with a code.
+              </Typography>
+            </Stack>
+          </SectionCard>
         </Grid>
       </Grid>
 

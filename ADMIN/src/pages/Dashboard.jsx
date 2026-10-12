@@ -1,88 +1,74 @@
 import { useEffect, useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
-import Alert from '@mui/material/Alert';
+import { useOutletContext } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Divider from '@mui/material/Divider';
-import Grid from '@mui/material/Grid';
-import IconButton from '@mui/material/IconButton';
 import Skeleton from '@mui/material/Skeleton';
-import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
-import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
-import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
+import EventAvailableRoundedIcon from '@mui/icons-material/EventAvailableRounded';
+import EventBusyRoundedIcon from '@mui/icons-material/EventBusyRounded';
 import EventRoundedIcon from '@mui/icons-material/EventRounded';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
 import HourglassEmptyRoundedIcon from '@mui/icons-material/HourglassEmptyRounded';
 import MedicalServicesOutlinedIcon from '@mui/icons-material/MedicalServicesOutlined';
 import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded';
-import EventAvailableRoundedIcon from '@mui/icons-material/EventAvailableRounded';
 import api from '../api/axios';
+import { fetchAll } from '../api/fetchAll';
 import ConfirmDialog from '../components/ConfirmDialog';
-import EmptyState from '../components/EmptyState';
-import IconBadge from '../components/IconBadge';
 import PageHeader from '../components/PageHeader';
-import StatusChip from '../components/StatusChip';
-import WeekChart from '../components/WeekChart';
+import PendingList from '../components/dashboard/PendingList';
+import RecentActivity from '../components/dashboard/RecentActivity';
+import TodaySchedule from '../components/dashboard/TodaySchedule';
+import WeekCapacityChart from '../components/dashboard/WeekCapacityChart';
+import { toMinutes } from '../components/dashboard/helpers';
+import SectionCard from '../components/ui/SectionCard';
+import SoftChip from '../components/ui/SoftChip';
+import StatCard from '../components/ui/StatCard';
+import { ErrorState } from '../components/ui/TableStates';
 import useAuth from '../hooks/useAuth';
 import useToast from '../hooks/useToast';
 import { getErrorMessage } from '../utils/errors';
-import { formatDate, formatTimeRange, relativeDay, todayString } from '../utils/format';
+import { formatDate, formatTime, formatTimeRange, parseDate, todayString, nowInBusinessTz } from '../utils/format';
+import { greeting, hoursSince } from '../utils/time';
 
-function StatCard({ icon, label, value, color }) {
-  return (
-    <Card sx={{ height: '100%' }}>
-      <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <IconBadge icon={icon} color={color} />
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="body2" color="text.secondary" noWrap>
-            {label}
-          </Typography>
-          <Typography variant="h5" component="p" sx={{ fontWeight: 700 }}>
-            {value ?? <Skeleton width={32} />}
-          </Typography>
-        </Box>
-      </CardContent>
-    </Card>
-  );
+const readNow = () => ({ ms: Date.now(), clinic: nowInBusinessTz() });
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// Client-side CSV of what's on screen (today's schedule + pending bookings).
+function downloadCsv(today, pending) {
+  const header = ['List', 'Date', 'Start', 'End', 'Client', 'Email', 'Service', 'Specialist', 'Status'];
+  const row = (list, a) => [list, a.date, a.startTime, a.endTime, a.user?.name ?? 'Deleted user', a.user?.email ?? '', a.service?.name ?? '', a.staff?.name ?? '', a.status];
+  const rows = [...today.map((a) => row("Today's schedule", a)), ...pending.map((a) => row('Needs confirmation', a))];
+  const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([String.fromCharCode(0xfeff), csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `dashboard-${todayString()}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
-function AppointmentRow({ appt, actions }) {
-  return (
-    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 1, sm: 2 }} sx={{ px: 2.5, py: 1.75, alignItems: { sm: 'center' } }}>
-      <Box sx={{ minWidth: 120 }}>
-        <Typography sx={{ fontWeight: 600 }}>{relativeDay(appt.date)}</Typography>
-        <Typography variant="body2" color="text.secondary">
-          {formatTimeRange(appt.startTime, appt.endTime)}
-        </Typography>
-      </Box>
-      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography noWrap>{appt.user?.name ?? 'Deleted user'}</Typography>
-        <Typography variant="body2" color="text.secondary" noWrap>
-          {appt.service?.name ?? '—'} · {appt.staff?.name ?? '—'}
-        </Typography>
-      </Box>
-      {actions ?? <StatusChip status={appt.status} />}
-    </Stack>
-  );
-}
+const ROW_GAP = { xs: 2, lg: 2.5 };
 
 export default function Dashboard() {
   const { user } = useAuth();
   const showToast = useToast();
+  const { refreshCounts } = useOutletContext() ?? {};
   const [stats, setStats] = useState(null);
   const [pending, setPending] = useState(null);
   const [today, setToday] = useState(null);
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
-  const [busyId, setBusyId] = useState('');
   // Cancelling frees the slot, so it is confirmed first (as on the Appointments page).
   const [cancelling, setCancelling] = useState(null);
+  // undefined = loading, null = failed, array = loaded.
+  const [staff, setStaff] = useState(undefined);
+  const [logs, setLogs] = useState(null);
+  const [logsError, setLogsError] = useState('');
+  const [logsTick, setLogsTick] = useState(0);
+  const [now, setNow] = useState(readNow);
 
   useEffect(() => {
     let active = true;
@@ -106,143 +92,239 @@ export default function Dashboard() {
     };
   }, [refresh]);
 
+  // Staff rosters: closed days on the chart, columns + shifts on today's schedule, invited count.
+  useEffect(() => {
+    let active = true;
+    fetchAll('/staff', { includeInactive: true })
+      .then((items) => active && setStaff(items))
+      .catch(() => active && setStaff(null));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get('/admin/audit-logs', { params: { limit: 8 } })
+      .then(({ data }) => {
+        if (!active) return;
+        setLogs(data.items);
+        setLogsError('');
+      })
+      .catch((err) => active && setLogsError(getErrorMessage(err)));
+    return () => {
+      active = false;
+    };
+  }, [logsTick, refresh]);
+
+  // Keeps the "now" line, next-up and relative times fresh.
+  useEffect(() => {
+    const id = setInterval(() => setNow(readNow()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Optimistic: the row leaves the list at once and comes back if the request fails.
   const setStatus = async (appt, status) => {
-    setBusyId(appt._id);
+    const index = pending?.items.findIndex((a) => a._id === appt._id) ?? -1;
+    setPending((p) => p && { ...p, items: p.items.filter((a) => a._id !== appt._id) });
     try {
       await api.put(`/appointments/${appt._id}`, { status });
-      showToast(status === 'confirmed' ? 'Appointment confirmed.' : 'Appointment cancelled.');
+      showToast(status === 'confirmed' ? 'Appointment confirmed.' : 'Appointment cancelled.', 'success');
+      refreshCounts?.();
       setRefresh((n) => n + 1);
     } catch (err) {
+      setPending((p) => {
+        if (!p || p.items.some((a) => a._id === appt._id)) return p;
+        const items = [...p.items];
+        items.splice(index < 0 ? items.length : index, 0, appt);
+        return { ...p, items };
+      });
       showToast(getErrorMessage(err), 'error');
-    } finally {
-      setBusyId('');
     }
   };
 
-  const cards = [
-    { icon: EventRoundedIcon, label: "Today's appointments", value: stats?.today, color: 'primary' },
-    { icon: HourglassEmptyRoundedIcon, label: 'Awaiting confirmation', value: stats?.byStatus.pending, color: 'warning' },
-    { icon: EventAvailableRoundedIcon, label: 'Upcoming (active)', value: stats?.upcoming, color: 'success' },
-    { icon: TaskAltRoundedIcon, label: 'Completed', value: stats?.byStatus.completed, color: 'info' },
-    { icon: GroupOutlinedIcon, label: 'Clients', value: stats?.clients, color: 'secondary' },
-    { icon: MedicalServicesOutlinedIcon, label: 'Active services', value: stats?.activeServices, color: 'primary' },
-    { icon: BadgeOutlinedIcon, label: 'Active staff', value: stats?.activeStaff, color: 'success' },
-    { icon: CloseRoundedIcon, label: 'Cancelled', value: stats?.byStatus.cancelled, color: 'error' },
-  ];
+  const clinicDate = now.clinic.date;
+  const failed = Boolean(error);
+  const orDash = (v) => (failed && v === undefined ? '—' : v);
+  const pendingCount = stats?.byStatus.pending;
+
+  // KPI sub-lines, all from data already on the page.
+  const nextUp = today?.find((a) => a.date === clinicDate && toMinutes(a.startTime) >= now.clinic.minutes);
+  const todaySub = today && (nextUp ? `Next at ${formatTime(nextUp.startTime)} · ${nextUp.user?.name ?? 'Deleted user'}` : today.length ? 'No more bookings today' : 'Nothing booked today');
+
+  let pendingSub;
+  if (pending && pendingCount === 0) pendingSub = "You're all caught up";
+  else if (pending?.items.length && pending.pagination?.total <= pending.items.length) {
+    // TODO(backend): the oldest request overall needs a createdAt sort; this is only exact when every pending booking is loaded.
+    const oldest = Math.min(...pending.items.map((a) => new Date(a.createdAt).getTime()).filter(Number.isFinite));
+    if (Number.isFinite(oldest)) {
+      const hrs = hoursSince(oldest, now.ms);
+      pendingSub = `Oldest waiting ${hrs < 1 ? 'under 1 hr' : plural(hrs, 'hr')} →`;
+    }
+  } else if (pending?.items.length) pendingSub = 'Review the queue →';
+
+  const weekTotal = stats?.nextSevenDays?.reduce((n, d) => n + d.pending + d.confirmed, 0);
+  const completed = stats?.byStatus.completed ?? 0;
+  const cancelled = stats?.byStatus.cancelled ?? 0;
+  const closedTotal = completed + cancelled;
+  const completionRate = stats ? (closedTotal ? `${Math.round((completed / closedTotal) * 100)}%` : '—') : undefined;
+
+  const invited = staff ? staff.filter((s) => s.isActive && s.portal?.status === 'invited').length : 0;
+  const weekday = parseDate(clinicDate).getDay();
+  // Weekdays with no active staff working (null if staff didn't load: don't guess).
+  const closedDays = staff
+    ? new Set([0, 1, 2, 3, 4, 5, 6].filter((d) => !staff.some((s) => s.isActive && s.workingDays?.includes(d))))
+    : null;
+  const workingToday = staff ? staff.filter((s) => s.isActive && s.workingDays?.includes(weekday)).length : null;
+
+  const headline =
+    pendingCount === undefined
+      ? formatDate(clinicDate, { weekday: 'long', month: 'long', day: 'numeric' })
+      : `${formatDate(clinicDate, { weekday: 'long', month: 'long', day: 'numeric' })} · ${
+          pendingCount ? `${plural(pendingCount, 'booking')} ${pendingCount === 1 ? 'needs' : 'need'} your review` : 'nothing needs your review'
+        }`;
+
+  const sectionError = (
+    <Typography color="text.secondary" variant="body2">
+      Couldn&apos;t load this section.
+    </Typography>
+  );
 
   return (
     <>
-      <PageHeader title={`Welcome, ${user.name.split(' ')[0]}`} description="Here's what's happening with appointments." />
+      <PageHeader
+        title={`${greeting(new Date(now.ms))}, ${user.name.split(' ')[0]}`}
+        description={headline}
+        action={
+          <>
+            <Tooltip title="Download today's schedule and pending bookings as CSV">
+              <span>
+                <Button
+                  variant="outlined"
+                  startIcon={<FileDownloadOutlinedIcon />}
+                  disabled={!today || !pending}
+                  onClick={() => {
+                    downloadCsv(today, pending.items);
+                    showToast('Export downloaded.', 'info');
+                  }}
+                >
+                  Export
+                </Button>
+              </span>
+            </Tooltip>
+            {/* TODO(backend): "+ New booking" — POST /appointments only accepts client sessions, so there is no admin booking flow yet. */}
+          </>
+        }
+      />
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
+      {error && <ErrorState message={error} onRetry={() => setRefresh((n) => n + 1)} sx={{ m: 0, mb: 2.5 }} />}
 
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {cards.map((card) => (
-          <Grid key={card.label} size={{ xs: 6, lg: 3 }}>
-            <StatCard {...card} value={error && card.value === undefined ? '—' : card.value} />
-          </Grid>
-        ))}
-      </Grid>
+      {/* KPI row. TODO(backend): trend deltas ("↑ 2 vs last week") and sparklines need historical stats. */}
+      <Box sx={{ display: 'grid', gap: ROW_GAP, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, mb: ROW_GAP }}>
+        <StatCard icon={EventRoundedIcon} tone="primary" label="Today" value={orDash(stats?.today)} sub={todaySub} to={`/appointments?from=${clinicDate}&to=${clinicDate}`} />
+        <StatCard
+          icon={HourglassEmptyRoundedIcon}
+          tone="pending"
+          label="Awaiting confirmation"
+          value={orDash(pendingCount)}
+          sub={pendingSub}
+          highlight="pending"
+          to="/appointments?status=pending"
+        />
+        <StatCard
+          icon={EventAvailableRoundedIcon}
+          tone="success"
+          label="Upcoming"
+          value={orDash(stats?.upcoming)}
+          sub={weekTotal !== undefined ? `${plural(weekTotal, 'booking')} in the next 7 days` : undefined}
+          to="/appointments"
+        />
+        <StatCard
+          icon={TaskAltRoundedIcon}
+          tone="info"
+          label="Completion rate"
+          value={orDash(completionRate)}
+          sub={stats ? (closedTotal ? `${completed} completed · ${cancelled} cancelled` : 'No finished bookings yet') : undefined}
+        />
+      </Box>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, lg: 7 }}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent sx={{ p: 3 }}>
-              <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-                Next 7 days
-              </Typography>
-              {stats?.nextSevenDays ? (
-                <WeekChart days={stats.nextSevenDays} />
-              ) : error ? (
-                <Typography color="text.secondary">Couldn&apos;t load the chart.</Typography>
-              ) : (
-                <Skeleton variant="rounded" height={210} />
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+      {/* Secondary row */}
+      <Box sx={{ display: 'grid', gap: ROW_GAP, gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, mb: ROW_GAP }}>
+        {/* TODO(backend): "+N this week" chip needs new-client counts (e.g. clientsThisWeek in /appointments/stats). */}
+        <StatCard variant="compact" icon={GroupOutlinedIcon} tone="primary" label="Clients" value={orDash(stats?.clients)} />
+        <StatCard variant="compact" icon={MedicalServicesOutlinedIcon} tone="info" label="Active services" value={orDash(stats?.activeServices)} />
+        <StatCard
+          variant="compact"
+          icon={BadgeOutlinedIcon}
+          tone="success"
+          label="Active staff"
+          value={orDash(stats?.activeStaff)}
+          chip={invited > 0 && <SoftChip tone="pending">{invited} invited</SoftChip>}
+        />
+        <StatCard variant="compact" icon={EventBusyRoundedIcon} tone="danger" label="Cancelled" value={orDash(stats?.byStatus.cancelled)} />
+      </Box>
 
-        <Grid size={{ xs: 12, lg: 5 }}>
-          <Card sx={{ height: '100%' }}>
-            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', px: 2.5, py: 2 }}>
-              <Typography variant="h6" component="h2">
-                Needs confirmation
-              </Typography>
-              <Button component={RouterLink} to="/appointments?status=pending" endIcon={<ArrowForwardRoundedIcon />} size="small">
-                All {pending?.pagination?.total ? `(${pending.pagination.total})` : ''}
-              </Button>
-            </Stack>
-            <Divider />
-            {pending === null && !error && <Skeleton variant="rounded" height={160} sx={{ m: 2.5 }} />}
-            {pending?.items.length === 0 && <EmptyState icon={TaskAltRoundedIcon} title="All caught up" description="No bookings are waiting for confirmation." />}
-            {pending?.items.map((appt, i) => (
-              <Box key={appt._id}>
-                {i > 0 && <Divider />}
-                <AppointmentRow
-                  appt={appt}
-                  actions={
-                    <Stack direction="row" spacing={0.5}>
-                      <Tooltip title="Confirm">
-                        <span>
-                          <IconButton color="success" onClick={() => setStatus(appt, 'confirmed')} disabled={busyId === appt._id} aria-label="Confirm">
-                            <CheckRoundedIcon />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                      <Tooltip title="Cancel">
-                        <span>
-                          <IconButton color="error" onClick={() => setCancelling(appt)} disabled={busyId === appt._id} aria-label="Cancel">
-                            <CloseRoundedIcon />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </Stack>
-                  }
-                />
-              </Box>
-            ))}
-          </Card>
-        </Grid>
+      {/* Chart + pending queue */}
+      <Box sx={{ display: 'grid', gap: ROW_GAP, gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1.35fr) minmax(0, 1fr)' }, mb: ROW_GAP }}>
+        <SectionCard title="Next 7 days" chip={weekTotal !== undefined && <SoftChip tone="neutral">{plural(weekTotal, 'booking')}</SoftChip>}>
+          {stats?.nextSevenDays ? (
+            <WeekCapacityChart days={stats.nextSevenDays} closedDays={closedDays} />
+          ) : failed ? (
+            sectionError
+          ) : (
+            <Skeleton variant="rounded" height={230} sx={{ borderRadius: '16px' }} />
+          )}
+        </SectionCard>
 
-        <Grid size={12}>
-          <Card>
-            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', px: 2.5, py: 2 }}>
-              <Typography variant="h6" component="h2">
-                Today&apos;s schedule
-              </Typography>
-              <Button component={RouterLink} to={`/appointments?from=${todayString()}&to=${todayString()}`} endIcon={<ArrowForwardRoundedIcon />} size="small">
-                Manage
-              </Button>
-            </Stack>
-            <Divider />
-            {today === null && !error && <Skeleton variant="rounded" height={120} sx={{ m: 2.5 }} />}
-            {today?.length === 0 && <EmptyState title="Nothing scheduled today" description="Confirmed and pending appointments for today will appear here." />}
-            {today?.map((appt, i) => (
-              <Box key={appt._id}>
-                {i > 0 && <Divider />}
-                <AppointmentRow appt={appt} />
-              </Box>
-            ))}
-          </Card>
-        </Grid>
-      </Grid>
+        <SectionCard
+          title="Needs confirmation"
+          chip={pendingCount > 0 && <SoftChip tone="pending">{pendingCount}</SoftChip>}
+          linkTo="/appointments?status=pending"
+          flush
+        >
+          {failed && !pending ? (
+            <Box sx={{ px: 2.5, pb: 2.5 }}>{sectionError}</Box>
+          ) : (
+            <PendingList items={pending ? pending.items : null} onConfirm={(appt) => setStatus(appt, 'confirmed')} onDecline={setCancelling} />
+          )}
+        </SectionCard>
+      </Box>
+
+      {/* Today's schedule + activity */}
+      <Box sx={{ display: 'grid', gap: ROW_GAP, gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1.6fr) minmax(0, 1fr)' } }}>
+        <SectionCard
+          title="Today's schedule"
+          chip={
+            today && (
+              <SoftChip tone="neutral">
+                {plural(today.length, 'booking')}
+                {workingToday !== null && ` · ${workingToday} on shift`}
+              </SoftChip>
+            )
+          }
+          linkTo={`/appointments?from=${clinicDate}&to=${clinicDate}`}
+          linkLabel="Manage"
+        >
+          {failed && !today ? sectionError : <TodaySchedule date={clinicDate} appointments={staff === undefined ? null : today} staff={staff} now={now.clinic} />}
+        </SectionCard>
+
+        <SectionCard title="Recent activity" linkTo="/audit-log" linkLabel="Audit log">
+          <RecentActivity logs={logs} pending={pending?.items ?? []} error={logs ? '' : logsError} onRetry={() => setLogsTick((n) => n + 1)} now={now.ms} />
+        </SectionCard>
+      </Box>
 
       <ConfirmDialog
         open={Boolean(cancelling)}
-        title="Cancel this appointment?"
+        title="Decline this booking?"
         message={
           cancelling
             ? `${cancelling.user?.name ?? 'This client'}'s booking on ${formatDate(cancelling.date)} at ${formatTimeRange(cancelling.startTime, cancelling.endTime)} will be cancelled and the time slot freed.`
             : ''
         }
-        confirmText="Cancel appointment"
-        busy={Boolean(cancelling) && busyId === cancelling._id}
-        onConfirm={async () => {
-          await setStatus(cancelling, 'cancelled');
+        confirmText="Decline booking"
+        onConfirm={() => {
+          setStatus(cancelling, 'cancelled');
           setCancelling(null);
         }}
         onClose={() => setCancelling(null)}

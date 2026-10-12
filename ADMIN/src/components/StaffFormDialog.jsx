@@ -18,6 +18,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import api from '../api/axios';
+import UserAvatar from './ui/UserAvatar';
 import { fetchAll } from '../api/fetchAll';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
 import {
@@ -106,7 +107,17 @@ export default function StaffFormDialog({ staff, onClose, onSaved }) {
   return (
     <Dialog open onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
       <Box component="form" noValidate onSubmit={submit}>
-        <DialogTitle>{editing ? 'Edit staff member' : 'Add staff member'}</DialogTitle>
+        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
+          {editing && <UserAvatar id={staff._id} name={staff.name} size={40} />}
+          <Box sx={{ minWidth: 0 }}>
+            <Typography component="h2" sx={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.02em' }}>
+              {editing ? 'Edit staff member' : 'Add staff member'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {editing ? staff.name : 'Who they are, what they offer and when they work.'}
+            </Typography>
+          </Box>
+        </DialogTitle>
         <DialogContent>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -174,7 +185,7 @@ export default function StaffFormDialog({ staff, onClose, onSaved }) {
             />
 
             <Box>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1, fontWeight: 600 }}>
                 Working days
               </Typography>
               <ToggleButtonGroup
@@ -182,10 +193,17 @@ export default function StaffFormDialog({ staff, onClose, onSaved }) {
                 onChange={(_e, value) => set('workingDays', [...value].sort())}
                 aria-label="Working days"
                 size="small"
-                sx={{ flexWrap: 'wrap' }}
+                sx={{
+                  flexWrap: 'wrap',
+                  gap: 0.75,
+                  // Separate pills instead of a joined button bar.
+                  '& .MuiToggleButtonGroup-grouped': { m: 0, border: '1px solid', borderColor: 'divider', borderRadius: '999px !important', bgcolor: 'field.main' },
+                  '& .MuiToggleButton-root.Mui-selected, & .MuiToggleButton-root.Mui-selected:hover': { bgcolor: 'accent.main', color: 'accent.contrastText', borderColor: 'transparent' },
+                  '& .MuiToggleButton-root.Mui-focusVisible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+                }}
               >
                 {DAYS.map((d, i) => (
-                  <ToggleButton key={d} value={i} aria-label={d} sx={{ px: 1.75 }}>
+                  <ToggleButton key={d} value={i} aria-label={d} sx={{ px: 1.75, fontWeight: 700, textTransform: 'none' }}>
                     {d}
                   </ToggleButton>
                 ))}
@@ -206,14 +224,17 @@ export default function StaffFormDialog({ staff, onClose, onSaved }) {
               />
             </Stack>
 
-            <FormControlLabel
-              control={<Switch checked={form.isActive} onChange={(e) => set('isActive', e.target.checked)} />}
-              label={form.isActive ? 'Active: clients can book with this person' : 'Inactive: hidden from clients, and no staff-portal access'}
-            />
+            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '14px', bgcolor: 'hover.main', px: 2, py: 1 }}>
+              <FormControlLabel
+                control={<Switch checked={form.isActive} onChange={(e) => set('isActive', e.target.checked)} />}
+                label={form.isActive ? 'Active: clients can book with this person' : 'Inactive: hidden from clients, and no staff-portal access'}
+                slotProps={{ typography: { sx: { fontSize: 14, fontWeight: 600 } } }}
+              />
+            </Box>
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={onClose} color="inherit" disabled={busy}>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={onClose} variant="outlined" disabled={busy}>
             Cancel
           </Button>
           <Button type="submit" variant="contained" disabled={busy} startIcon={busy ? <CircularProgress size={16} color="inherit" /> : undefined}>

@@ -5,10 +5,14 @@ import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
-import DialogTitle from '@mui/material/DialogTitle';
+import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import AlternateEmailRoundedIcon from '@mui/icons-material/AlternateEmailRounded';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
+import MarkEmailReadOutlinedIcon from '@mui/icons-material/MarkEmailReadOutlined';
 import api from '../api/axios';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
 import { validateEmail } from '../utils/validation';
@@ -16,6 +20,7 @@ import OtpInput from './OtpInput';
 import PasswordField from './PasswordField';
 import ResendCode from './ResendCode';
 import SubmitButton from './SubmitButton';
+import { IconTile } from './ui/StatCard';
 
 // When the Resend button unlocks (epoch ms).
 const cooldownFrom = (seconds) => Date.now() + seconds * 1000;
@@ -120,9 +125,20 @@ export default function ChangeEmailDialog({ open, currentEmail, onClose, onChang
   };
 
   return (
-    <Dialog open={open} onClose={close} maxWidth="xs" fullWidth>
-      <DialogTitle>Change email</DialogTitle>
-      <DialogContent>
+    <Dialog open={open} onClose={close} maxWidth="xs" fullWidth aria-labelledby="change-email-title">
+      <DialogContent sx={{ pt: 3 }}>
+        <Stack direction="row" spacing={1.75} sx={{ alignItems: 'center', mb: 2.5 }}>
+          <IconTile icon={step === 0 ? AlternateEmailRoundedIcon : MarkEmailReadOutlinedIcon} tone="primary" size={44} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography id="change-email-title" component="h2" sx={{ fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em', lineHeight: 1.3 }}>
+              {step === 0 ? 'Change email' : 'Check your inbox'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+              Step {step + 1} of 2
+            </Typography>
+          </Box>
+        </Stack>
+
         {notice && !error && (
           <Alert severity="success" sx={{ mb: 2 }}>
             {notice}
@@ -139,11 +155,20 @@ export default function ChangeEmailDialog({ open, currentEmail, onClose, onChang
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               We&apos;ll send a code to your new address to make sure it&apos;s yours.
             </Typography>
-            <Stack spacing={2.5} sx={{ pt: 1 }}>
+            <Stack spacing={2.25} sx={{ pt: 0.5 }}>
               <TextField
                 label="New email"
                 type="email"
-                slotProps={{ htmlInput: { maxLength: 64 } }}
+                slotProps={{
+                  htmlInput: { maxLength: 64 },
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start" sx={{ color: 'text.secondary', '& .MuiSvgIcon-root': { fontSize: 18 } }}>
+                        <MailOutlineRoundedIcon />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
                 autoComplete="email"
                 autoFocus
                 value={newEmail}
@@ -156,6 +181,7 @@ export default function ChangeEmailDialog({ open, currentEmail, onClose, onChang
               />
               <PasswordField
                 label="Current password"
+                startIcon={<LockOutlinedIcon />}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 error={errors.currentPassword}
@@ -178,8 +204,8 @@ export default function ChangeEmailDialog({ open, currentEmail, onClose, onChang
           </>
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={step === 0 ? close : goBack} color="inherit" disabled={busy}>
+      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+        <Button onClick={step === 0 ? close : goBack} variant="outlined" disabled={busy}>
           {step === 0 ? 'Cancel' : 'Back'}
         </Button>
         {step === 0 ? (
