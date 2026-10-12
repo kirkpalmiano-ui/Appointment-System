@@ -188,7 +188,7 @@ class HomePage extends State<HomeState> {
             // Header: avatar, greeting + name, notifications bell.
             Row(
               children: [
-                InitialsAvatar(fullName.isEmpty ? firstName : fullName, size: 40),
+                InitialsAvatar(fullName.isEmpty ? firstName : fullName, size: 40, imageUrl: Activesession.user["avatarUrl"]?.toString()),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(

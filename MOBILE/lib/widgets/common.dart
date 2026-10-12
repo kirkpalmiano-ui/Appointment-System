@@ -148,6 +148,8 @@ class AppDrawer extends StatelessWidget {
                 CircleAvatar(
                   radius: 28,
                   backgroundColor: Colors.white.withValues(alpha: 0.16),
+                  foregroundImage: (user["avatarUrl"] ?? "").toString().isNotEmpty ? NetworkImage(user["avatarUrl"].toString()) : null,
+                  onForegroundImageError: (user["avatarUrl"] ?? "").toString().isNotEmpty ? (_, _) {} : null,
                   child: Text(
                     (user["name"] ?? "?").toString().substring(0, 1).toUpperCase(),
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white),

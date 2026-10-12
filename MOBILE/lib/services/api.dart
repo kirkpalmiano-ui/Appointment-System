@@ -33,6 +33,23 @@ class Api {
   static Future<dynamic> patch(String path, [Map<String, dynamic>? body]) => _send("PATCH", path, body: body);
   static Future<dynamic> delete(String path) => _send("DELETE", path);
 
+  // Sends one file as multipart/form-data (e.g. the profile photo).
+  static Future<dynamic> upload(String method, String path, {required String field, required List<int> bytes, required String filename}) async {
+    final hadToken = Activesession.isLoggedIn;
+    final request = http.MultipartRequest(method, Uri.parse("$apiBaseUrl$path"))
+      ..headers["Accept"] = "application/json"
+      ..files.add(http.MultipartFile.fromBytes(field, bytes, filename: filename));
+    if (hadToken) request.headers["Authorization"] = "Bearer ${Activesession.token}";
+
+    http.Response response;
+    try {
+      response = await http.Response.fromStream(await request.send().timeout(timeout));
+    } catch (error) {
+      throw ApiException(0, "Cannot reach the server. Check your internet connection and try again.");
+    }
+    return _handle(response, hadToken);
+  }
+
   static Future<dynamic> _send(String method, String path, {Map<String, String>? query, Map<String, dynamic>? body}) async {
     // Leave out empty filters so the URL stays clean.
     final cleanQuery = query == null ? null : (Map.of(query)..removeWhere((key, value) => value.isEmpty));
@@ -59,7 +76,11 @@ class Api {
     } catch (error) {
       throw ApiException(0, "Cannot reach the server. Check your internet connection and try again.");
     }
+    return _handle(response, hadToken);
+  }
 
+  // Returns the JSON body of a successful response, or throws an ApiException.
+  static dynamic _handle(http.Response response, bool hadToken) {
     dynamic data;
     try {
       data = response.body.isEmpty ? null : jsonDecode(response.body);

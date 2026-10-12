@@ -16,6 +16,7 @@ import ChangeEmailDialog from '../components/ChangeEmailDialog';
 import PageHeader from '../components/PageHeader';
 import PasswordField from '../components/PasswordField';
 import SubmitButton from '../components/SubmitButton';
+import AvatarEditor from '../components/account/AvatarEditor';
 import PasswordStrength from '../components/account/PasswordStrength';
 import SecurityOverview from '../components/account/SecurityOverview';
 import SessionCard from '../components/account/SessionCard';
@@ -24,7 +25,6 @@ import useMyAuditEvents from '../components/account/useMyAuditEvents';
 import RoleChip from '../components/ui/RoleChip';
 import SectionCard from '../components/ui/SectionCard';
 import SoftChip from '../components/ui/SoftChip';
-import UserAvatar from '../components/ui/UserAvatar';
 import useAuth from '../hooks/useAuth';
 import useToast from '../hooks/useToast';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
@@ -112,11 +112,10 @@ export default function Account() {
           spacing={{ xs: 1.5, sm: 2.5 }}
           sx={{ px: { xs: 2.5, sm: 3 }, pb: 3, alignItems: { sm: 'flex-end' } }}
         >
-          <UserAvatar
-            id={user._id}
-            name={user.name}
+          <AvatarEditor
             size={84}
-            sx={{ mt: '-42px', fontSize: 30, boxShadow: (t) => `0 0 0 4px ${t.vars.palette.background.paper}, 0 12px 24px -12px rgba(15, 23, 42, 0.35)` }}
+            sx={{ mt: '-42px' }}
+            avatarSx={{ fontSize: 30, boxShadow: (t) => `0 0 0 4px ${t.vars.palette.background.paper}, 0 12px 24px -12px rgba(15, 23, 42, 0.35)` }}
           />
           <Box sx={{ minWidth: 0, flexGrow: 1 }}>
             <Typography component="h2" sx={{ fontWeight: 800, fontSize: 22, letterSpacing: '-0.02em', lineHeight: 1.2 }}>

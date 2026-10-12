@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import Box from '@mui/material/Box';
 import { tintFor, tintSx } from '../../utils/avatar';
 import { initials } from '../../utils/format';
@@ -5,8 +6,12 @@ import { initials } from '../../utils/format';
 /**
  * Initials on a soft tinted circle. `id` picks the colour (falls back to the name).
  * Pass `unknown` for a gray "?" (e.g. failed sign-ins with no account).
+ * `src` shows the person's profile photo instead (falls back to initials if it fails to load).
  */
-export default function UserAvatar({ name = '', id, size = 34, unknown = false, square = false, sx }) {
+export default function UserAvatar({ name = '', id, src, size = 34, unknown = false, square = false, sx }) {
+  // Remember which URL failed, so a newly uploaded photo is tried again.
+  const [failedSrc, setFailedSrc] = useState(null);
+  const showPhoto = Boolean(src) && failedSrc !== src;
   const label = unknown ? '?' : initials(name.replace(/^dr\.?\s+/i, '')) || '?';
   return (
     <Box
@@ -25,10 +30,15 @@ export default function UserAvatar({ name = '', id, size = 34, unknown = false, 
           userSelect: 'none',
         },
         unknown ? { bgcolor: 'hover.main', color: 'text.secondary' } : tintSx(tintFor(id || name)),
+        showPhoto && { overflow: 'hidden' },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
     >
-      {label}
+      {showPhoto ? (
+        <Box component="img" src={src} alt="" onError={() => setFailedSrc(src)} sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      ) : (
+        label
+      )}
     </Box>
   );
 }

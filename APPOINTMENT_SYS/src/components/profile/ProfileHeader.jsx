@@ -1,10 +1,9 @@
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { SoftChip } from '../StatusChip';
-import { initials } from '../../utils/format';
+import AvatarEditor from './AvatarEditor';
 import ProfileCompleteness from './ProfileCompleteness';
 import { profileGradientSx, ROLE_LABEL } from './profileUtils';
 
@@ -20,12 +19,10 @@ export default function ProfileHeader({ user }) {
       <Box aria-hidden sx={[{ height: { xs: 110, md: 140 } }, profileGradientSx]} />
 
       <Box sx={{ px: { xs: 2.5, sm: 4 }, pb: { xs: 3, sm: 3.5 } }}>
-        {/* TODO(backend): avatar upload (no endpoint yet), so initials only. */}
-        <Avatar
-          sx={(theme) => ({
-            width: 112,
-            height: 112,
-            mt: '-56px',
+        <AvatarEditor
+          size={112}
+          sx={{ mt: '-56px' }}
+          avatarSx={(theme) => ({
             fontSize: 38,
             fontWeight: 800,
             bgcolor: 'accent.main',
@@ -33,9 +30,7 @@ export default function ProfileHeader({ user }) {
             border: `5px solid ${theme.vars.palette.background.default}`,
             boxSizing: 'border-box',
           })}
-        >
-          {initials(user.name)}
-        </Avatar>
+        />
 
         <Stack
           direction={{ xs: 'column', md: 'row' }}

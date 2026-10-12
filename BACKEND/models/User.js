@@ -26,6 +26,8 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, trim: true, maxlength: 20, default: '' },
     phoneCountry: { type: String, trim: true, uppercase: true, maxlength: 2, default: '' },
     role: { type: String, enum: ROLES, default: 'client' },
+    // Profile photo hosted on Cloudinary (see utils/avatar.js); empty = show initials.
+    avatarUrl: { type: String, trim: true, maxlength: 300, default: '' },
     // Which optional emails the user wants (Profile → Appointment reminders).
     notificationPrefs: {
       emailReminders: { type: Boolean, default: true }, // ~24h before each visit

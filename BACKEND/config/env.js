@@ -39,4 +39,10 @@ export const config = {
     senderName: process.env.BREVO_SENDER_NAME || 'CliniQuick',
   },
   appName: process.env.APP_NAME || 'CliniQuick',
+  // Profile photo storage. Cloudinary > Dashboard > API Keys.
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+    apiKey: process.env.CLOUDINARY_API_KEY || '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+  },
 };

@@ -210,19 +210,24 @@ class IconTile extends StatelessWidget {
   }
 }
 
-// Initials avatar in the soft accent colours.
+// Initials avatar in the soft accent colours. With `imageUrl` it shows the
+// profile photo instead (the initials stay underneath if the photo can't load).
 class InitialsAvatar extends StatelessWidget {
   final String? name;
   final double size;
-  const InitialsAvatar(this.name, {super.key, this.size = 44});
+  final String? imageUrl;
+  const InitialsAvatar(this.name, {super.key, this.size = 44, this.imageUrl});
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final initials = (name ?? "").trim().split(RegExp(r"\s+")).where((p) => p.isNotEmpty).take(2).map((p) => p[0].toUpperCase()).join();
+    final hasPhoto = imageUrl != null && imageUrl!.isNotEmpty;
     return CircleAvatar(
       radius: size / 2,
       backgroundColor: c.chipBg,
+      foregroundImage: hasPhoto ? NetworkImage(imageUrl!) : null,
+      onForegroundImageError: hasPhoto ? (_, _) {} : null,
       child: Text(initials.isEmpty ? "?" : initials, style: TextStyle(color: c.chipText, fontWeight: FontWeight.w700, fontSize: size * 0.34)),
     );
   }

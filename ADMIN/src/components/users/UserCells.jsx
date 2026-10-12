@@ -13,7 +13,7 @@ import { fullDateTime, signInLabel } from './format';
 export function UserIdentity({ user, isMe, size = 36 }) {
   return (
     <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
-      <UserAvatar id={user._id} name={user.name} size={size} />
+      <UserAvatar id={user._id} name={user.name} src={user.avatarUrl} size={size} />
       <Box sx={{ minWidth: 0 }}>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
           <Typography noWrap sx={{ fontWeight: 700, fontSize: 14.5 }}>

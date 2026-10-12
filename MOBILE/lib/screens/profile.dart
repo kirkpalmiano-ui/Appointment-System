@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:cliniquick/services/api.dart';
 import 'package:cliniquick/tempstore/activesession.dart';
 import 'package:cliniquick/theme.dart';
@@ -31,6 +33,7 @@ class ProfilePage extends State<ProfileState> {
   bool profileSaved = false;
   bool savingPassword = false;
   String savingPref = ""; // notification switch being saved
+  bool savingPhoto = false;
   ProfileSection? section; // open sub-screen, or null for the main list
 
   @override
@@ -116,6 +119,82 @@ class ProfilePage extends State<ProfileState> {
       if (mounted) showMessage(context, e.message, error: true);
     } finally {
       if (mounted) setState(() => savingProfile = false);
+    }
+  }
+
+  // Profile photo: pick from the gallery (or camera), upload it, or remove it.
+  // Photos are stored on Cloudinary by the backend (PUT/DELETE /users/me/avatar).
+  Future<void> choosePhoto() async {
+    final hasPhoto = (Activesession.user["avatarUrl"] ?? "").toString().isNotEmpty;
+    final choice = await showAppSheet<String>(
+      context,
+      title: "Profile photo",
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text("Choose from gallery"),
+            onTap: () => Navigator.pop(sheetContext, "gallery"),
+          ),
+          // The browser opens the same file picker either way, so only phones get "Take a photo".
+          if (!kIsWeb)
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text("Take a photo"),
+              onTap: () => Navigator.pop(sheetContext, "camera"),
+            ),
+          if (hasPhoto)
+            ListTile(
+              leading: Icon(Icons.delete_outline_rounded, color: Theme.of(context).colorScheme.error),
+              title: Text("Remove photo", style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              onTap: () => Navigator.pop(sheetContext, "remove"),
+            ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    if (choice == "remove") {
+      await savePhoto(() => Api.delete("/users/me/avatar"), "Profile photo removed.");
+      return;
+    }
+
+    final XFile? picked;
+    try {
+      // Resized on the phone so the upload is small and under the 2 MB limit.
+      picked = await ImagePicker().pickImage(
+        source: choice == "camera" ? ImageSource.camera : ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+    } catch (_) {
+      if (mounted) showMessage(context, "Couldn't open your photos. Check the app's permissions.", error: true);
+      return;
+    }
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (bytes.length > 2 * 1024 * 1024) {
+      if (mounted) showMessage(context, "That photo is too large. The limit is 2 MB.", error: true);
+      return;
+    }
+    await savePhoto(
+      () => Api.upload("PUT", "/users/me/avatar", field: "avatar", bytes: bytes, filename: picked!.name.isEmpty ? "avatar.jpg" : picked.name),
+      "Profile photo updated.",
+    );
+  }
+
+  Future<void> savePhoto(Future<dynamic> Function() request, String message) async {
+    setState(() => savingPhoto = true);
+    try {
+      final data = await request();
+      Activesession.user = Map<String, dynamic>.from(data["user"]);
+      if (mounted) showMessage(context, message);
+    } on ApiException catch (e) {
+      if (mounted) showMessage(context, e.message, error: true);
+    } finally {
+      if (mounted) setState(() => savingPhoto = false);
     }
   }
 
@@ -262,7 +341,13 @@ class ProfilePage extends State<ProfileState> {
       key: const ValueKey("main"),
       padding: EdgeInsets.only(bottom: tabBarSpace(context)),
       children: [
-        ProfileHeader(name: name, onEdit: () => open(ProfileSection.personal)),
+        ProfileHeader(
+          name: name,
+          avatarUrl: Activesession.user["avatarUrl"]?.toString(),
+          savingPhoto: savingPhoto,
+          onEdit: () => open(ProfileSection.personal),
+          onPhoto: choosePhoto,
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(

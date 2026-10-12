@@ -146,7 +146,7 @@ function SessionCard({ user, onSignOut }) {
         </Box>
       )}
       <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', px: 0.5 }}>
-        <UserAvatar id={user._id} name={user.name} size={36} />
+        <UserAvatar id={user._id} name={user.name} src={user.avatarUrl} size={36} />
         <Box sx={{ minWidth: 0, flexGrow: 1 }}>
           <Typography noWrap sx={{ fontSize: 14, fontWeight: 700 }}>
             {user.name}
@@ -274,7 +274,7 @@ export default function AdminLayout() {
               '&.Mui-focusVisible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
             }}
           >
-            <UserAvatar id={user._id} name={user.name} size={30} />
+            <UserAvatar id={user._id} name={user.name} src={user.avatarUrl} size={30} />
             {user.name.split(' ')[0]}
           </ButtonBase>
         </Box>

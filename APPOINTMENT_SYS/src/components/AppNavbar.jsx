@@ -180,7 +180,7 @@ export default function AppNavbar() {
                 aria-haspopup="true"
                 aria-label={`Account menu for ${user.name}`}
               >
-                <Avatar sx={{ width: 32, height: 32, fontSize: 13, fontWeight: 700, bgcolor: 'accent.main', color: 'accent.contrastText' }}>
+                <Avatar src={user.avatarUrl || undefined} alt="" sx={{ width: 32, height: 32, fontSize: 13, fontWeight: 700, bgcolor: 'accent.main', color: 'accent.contrastText' }}>
                   {initials(user.name)}
                 </Avatar>
                 {user.name.split(' ')[0]}
@@ -245,7 +245,7 @@ export default function AppNavbar() {
         <Box sx={{ width: 280 }} role="presentation">
           {user && (
             <Box sx={{ p: 2, display: 'flex', gap: 1.5, alignItems: 'center' }}>
-              <Avatar sx={{ bgcolor: 'primary.main' }}>{initials(user.name)}</Avatar>
+              <Avatar src={user.avatarUrl || undefined} alt="" sx={{ bgcolor: 'primary.main' }}>{initials(user.name)}</Avatar>
               <Box sx={{ minWidth: 0 }}>
                 <Typography sx={{ fontWeight: 600 }} noWrap>
                   {user.name}

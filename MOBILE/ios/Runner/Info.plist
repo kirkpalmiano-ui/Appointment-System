@@ -71,5 +71,9 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CliniQuick uses your photos so you can choose a profile picture.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>CliniQuick uses the camera so you can take a profile picture.</string>
 </dict>
 </plist>

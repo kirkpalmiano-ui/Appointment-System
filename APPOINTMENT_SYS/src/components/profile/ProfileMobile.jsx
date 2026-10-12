@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import ButtonBase from '@mui/material/ButtonBase';
@@ -22,7 +21,7 @@ import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
 import MobileTopBar from '../mobile/MobileTopBar';
 import { SoftChip } from '../StatusChip';
 import useAuth from '../../hooks/useAuth';
-import { initials } from '../../utils/format';
+import AvatarEditor from './AvatarEditor';
 import DangerZoneCard from './DangerZoneCard';
 import EmailCard from './EmailCard';
 import PersonalInfoCard from './PersonalInfoCard';
@@ -231,11 +230,9 @@ export default function ProfileMobile({ user, isStaff, isAdmin, personalSubtitle
 
       <Box sx={contentSx}>
         <Stack direction="row" spacing={2} sx={{ mt: '-44px', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-          {/* TODO(backend): avatar upload (no endpoint yet), so initials only. */}
-          <Avatar
-            sx={(theme) => ({
-              width: 88,
-              height: 88,
+          <AvatarEditor
+            size={88}
+            avatarSx={(theme) => ({
               fontSize: 30,
               fontWeight: 800,
               bgcolor: 'accent.main',
@@ -243,9 +240,7 @@ export default function ProfileMobile({ user, isStaff, isAdmin, personalSubtitle
               border: `4px solid ${theme.vars.palette.background.default}`,
               boxSizing: 'border-box',
             })}
-          >
-            {initials(user.name)}
-          </Avatar>
+          />
           <Button variant="outlined" size="small" onClick={() => open('personal-info')} sx={{ minHeight: 44, flex: 'none' }}>
             Edit profile
           </Button>

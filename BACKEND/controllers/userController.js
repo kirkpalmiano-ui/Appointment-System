@@ -9,6 +9,7 @@ import { SCOPES, signToken } from '../utils/tokens.js';
 import { clearOtp, issueOtp, verifyOtp } from '../utils/otp.js';
 import { sendEmailChangedNotice } from '../utils/email.js';
 import { getPagination, paginated, searchRegex } from '../utils/query.js';
+import { deleteAvatar, uploadAvatar } from '../utils/avatar.js';
 
 // GET /api/users/me
 export function getProfile(req, res) {
@@ -68,6 +69,21 @@ export async function updateProfile(req, res) {
   // A password change invalidates older tokens (other devices get logged out),
   // so give this session a fresh one of the same kind (client or admin).
   res.json({ user, ...(newPassword && { token: signToken(user, req.scope) }) });
+}
+
+// PUT /api/users/me/avatar  (multipart/form-data, field "avatar")
+// Any signed-in user (client, staff or admin) can set their own profile photo.
+export async function updateAvatar(req, res) {
+  const avatarUrl = await uploadAvatar(req.user._id, req.file);
+  const user = await User.findByIdAndUpdate(req.user._id, { avatarUrl }, { returnDocument: 'after' });
+  res.json({ user });
+}
+
+// DELETE /api/users/me/avatar
+export async function removeAvatar(req, res) {
+  await deleteAvatar(req.user._id);
+  const user = await User.findByIdAndUpdate(req.user._id, { avatarUrl: '' }, { returnDocument: 'after' });
+  res.json({ user });
 }
 
 // POST /api/users/me/email   { newEmail, currentPassword }
@@ -221,6 +237,7 @@ export async function deleteUser(req, res) {
   if (user.role === 'admin') await demoteAdmin(user, 'client');
 
   await user.deleteOne();
+  if (user.avatarUrl) await deleteAvatar(user._id);
   // A deleted staff login is unlinked from its staff record (the record itself stays).
   await Staff.updateMany({ user: user._id }, { user: null });
   const { deletedCount } = await Appointment.deleteMany({ user: user._id });

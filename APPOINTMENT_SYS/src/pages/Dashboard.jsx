@@ -205,7 +205,7 @@ export default function Dashboard() {
           }}
           left={
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
-              <Avatar sx={{ width: 40, height: 40, flex: 'none', bgcolor: 'accent.main', color: 'accent.contrastText', fontWeight: 800, fontSize: 15 }}>
+              <Avatar src={user?.avatarUrl || undefined} alt="" sx={{ width: 40, height: 40, flex: 'none', bgcolor: 'accent.main', color: 'accent.contrastText', fontWeight: 800, fontSize: 15 }}>
                 {initials(fullName)}
               </Avatar>
               <Box sx={{ minWidth: 0 }}>

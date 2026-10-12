@@ -55,10 +55,21 @@ typedef CompletenessHint = ({String hint, ProfileSection section, String? focus}
 }
 
 // Gradient banner, avatar with a page-coloured ring overlapping it, and "Edit profile".
+// The camera button on the avatar calls `onPhoto` (add, change or remove the photo).
 class ProfileHeader extends StatelessWidget {
   final String? name;
+  final String? avatarUrl;
+  final bool savingPhoto;
   final VoidCallback onEdit;
-  const ProfileHeader({super.key, required this.name, required this.onEdit});
+  final VoidCallback onPhoto;
+  const ProfileHeader({
+    super.key,
+    required this.name,
+    required this.onEdit,
+    required this.onPhoto,
+    this.avatarUrl,
+    this.savingPhoto = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -81,12 +92,52 @@ class ProfileHeader extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Container(
+                SizedBox(
                   width: 88,
                   height: 88,
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(color: c.page, shape: BoxShape.circle),
-                  child: InitialsAvatar(name, size: 80),
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 88,
+                        height: 88,
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(color: c.page, shape: BoxShape.circle),
+                        child: InitialsAvatar(name, size: 80, imageUrl: avatarUrl),
+                      ),
+                      if (savingPhoto)
+                        Positioned.fill(
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: DecoratedBox(
+                              decoration: const BoxDecoration(color: Color(0x73000000), shape: BoxShape.circle),
+                              child: const Center(
+                                child: SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Semantics(
+                          button: true,
+                          label: (avatarUrl ?? "").isEmpty ? "Add a profile photo" : "Change or remove profile photo",
+                          child: Material(
+                            color: Theme.of(context).colorScheme.primary,
+                            shape: CircleBorder(side: BorderSide(color: c.page, width: 3)),
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: savingPhoto ? null : onPhoto,
+                              child: Padding(
+                                padding: const EdgeInsets.all(7),
+                                child: Icon(Icons.photo_camera_rounded, size: 16, color: Theme.of(context).colorScheme.onPrimary),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const Spacer(),
                 OutlinedButton(
